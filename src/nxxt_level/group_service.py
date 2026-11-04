@@ -7,6 +7,7 @@ from typing import Any, Callable
 from nxxt_level.group import GroupRegistry
 from nxxt_level.group_store import GroupStore
 from nxxt_level.sync.hub import StateHub
+from nxxt_level.pairing import CredentialStore
 
 
 class PersistentGroupService:
@@ -105,6 +106,45 @@ class PersistentGroupService:
 
     async def unassign_charger(self, member_id: str, strip_id: str) -> dict:
         return await self._mutate(self.group.unassign_charger, member_id, strip_id)
+
+    async def create_pairing_invite(self, actor_member_id: str,
+                                    credentials: CredentialStore,
+                                    ttl_seconds: int = 300) -> str:
+        """Only the current Sudo may issue a short-lived invitation."""
+        async with self._lock:
+            if actor_member_id != self.group.sudo_member_id:
+                raise ValueError("Only current Sudo can invite a computer")
+            if actor_member_id not in self.group.members:
+                raise ValueError("Unknown inviting member")
+            return await asyncio.to_thread(
+                credentials.create_invite, actor_member_id, ttl_seconds
+            )
+
+    async def redeem_pairing_invite(self, code: str, member,
+                                    credentials: CredentialStore) -> str:
+        """Register a new member from a one-time invitation.
+
+        Returns a newly issued member token exactly once. The caller must
+        deliver it through a trusted local pairing flow and never log it.
+        """
+        async with self._lock:
+            if member.member_id in self.group.members:
+                raise ValueError("Member is already registered")
+            token = await asyncio.to_thread(
+                credentials.redeem_invite, code, member.member_id
+            )
+            previous = self.group
+            import copy
+            self.group = copy.deepcopy(self.group)
+            try:
+                self.group.add_member(member)
+                await asyncio.to_thread(self.store.save, self.group)
+            except Exception:
+                self.group = previous
+                await asyncio.to_thread(credentials.revoke, member.member_id)
+                raise
+            await self.hub.publish("groups", self.group.group_id, self.snapshot())
+            return token
 
     async def set_push_notifications(self, enabled: bool, actor_member_id: str) -> dict:
         return await self._mutate(
