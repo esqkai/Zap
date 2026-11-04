@@ -271,6 +271,11 @@ class MainWindow(QMainWindow):
         if not self.member_id or len(self.token) < 32:
             self.connection.setText("Enter your member ID and pairing token")
             return
+        try:
+            import keyring
+            keyring.set_password("NxxtLevel", self.member_id, self.token)
+        except Exception:
+            pass
         self.worker = SyncThread(self.endpoint.text().strip(), self.member_id, self.token)
         self.worker.event_received.connect(self.handle_event)
         self.worker.connection_state.connect(self.connection.setText)
