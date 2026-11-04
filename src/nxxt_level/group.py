@@ -104,19 +104,25 @@ class GroupRegistry:
     def assign_charger(self, member_id: str, strip_id: str, channel: int) -> None:
         """Pair one member laptop with the physical outlet used by its charger."""
         member = self._require_member(member_id)
-        if strip_id not in self.strips or channel not in range(1, 5):
+        if (strip_id not in self.strips or isinstance(channel, bool)
+                or not isinstance(channel, int) or channel not in range(1, 5)):
             raise GroupError("Unknown strip or invalid outlet channel")
         for other_id, other in self.members.items():
             if other_id != member_id and other.charger_assignments.get(strip_id) == channel:
                 raise GroupError("This outlet is already assigned to another device")
+        previous = member.charger_assignments.get(strip_id)
+        if previous is not None:
+            member.assigned_outlets.get(strip_id, set()).discard(previous)
         member.charger_assignments[strip_id] = channel
+        member.assigned_outlets.setdefault(strip_id, set()).add(channel)
         self._changed()
 
     def unassign_charger(self, member_id: str, strip_id: str) -> None:
         member = self._require_member(member_id)
         if strip_id not in member.charger_assignments:
             raise GroupError("No charger assignment exists for this member and strip")
-        del member.charger_assignments[strip_id]
+        channel = member.charger_assignments.pop(strip_id)
+        member.assigned_outlets.get(strip_id, set()).discard(channel)
         self._changed()
 
     def set_push_notifications(self, enabled: bool, actor_member_id: str) -> None:
