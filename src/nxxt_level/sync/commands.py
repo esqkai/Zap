@@ -29,6 +29,14 @@ class GroupCommandHandler:
             await self.groups.release_sudo(member_id)
             return {"ok": True, "result": "sudo_released"}
 
+        if command == "bind_strip_device":
+            self._require_sudo(member_id)
+            await self.groups.bind_strip_device(
+                member_id, self._string(message, "strip_id"),
+                self._string(message, "device_mac"),
+            )
+            return {"ok": True, "result": "strip_device_bound"}
+
         if command == "rename_strip":
             self._require_sudo(member_id)
             await self.groups.rename_strip(
@@ -80,7 +88,10 @@ class GroupCommandHandler:
                 raise CommandError(str(exc)) from exc
             if not allowed:
                 raise CommandError("This member is not assigned to that outlet")
-            session = self.devices.get_session(strip_id)
+            strip = group.strips[strip_id]
+            if not strip.device_mac:
+                raise CommandError("This strip has not been bound to physical hardware")
+            session = self.devices.get_session(strip.device_mac)
             if session is None or not session.is_active:
                 raise CommandError("The requested strip is offline")
             confirmed = await session.set_outlet(channel, enabled)
