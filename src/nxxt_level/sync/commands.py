@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from nxxt_level.group import GroupError
+from nxxt_level.group import GroupError, Strip
 
 
 class CommandError(ValueError):
@@ -39,6 +39,13 @@ class GroupCommandHandler:
         if command == "release_sudo":
             await self.groups.release_sudo(member_id)
             return {"ok": True, "result": "sudo_released"}
+
+        if command == "register_strip":
+            self._require_sudo(member_id)
+            strip_id = self._string(message, "strip_id")
+            name = self._string(message, "name")
+            await self.groups.add_strip(Strip(strip_id, name))
+            return {"ok": True, "result": "strip_registered"}
 
         if command == "bind_strip_device":
             self._require_sudo(member_id)
