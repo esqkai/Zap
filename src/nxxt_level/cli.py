@@ -186,18 +186,13 @@ async def _run_server(args: argparse.Namespace) -> int:
 
     sync_server = None
     if args.sync:
-        token = os.environ.get(args.sync_token_env, "")
-        if len(token) < 32:
-            raise ValueError(
-                f"Set {args.sync_token_env} to a random token of at least 32 characters"
-            )
         from nxxt_level.sync.websocket_server import serve_sync
         command_handler = GroupCommandHandler(group_service, server)
         sync_server = await serve_sync(
             hub, credential_store, args.sync_host, args.sync_port,
             command_handler, group_service
         )
-        logger.info("Authenticated sync stream on %s:%s", args.sync_host, args.sync_port)
+        logger.info("Authenticated sync and command server on %s:%s", args.sync_host, args.sync_port)
 
     try:
         await server.start()
@@ -276,12 +271,10 @@ def build_parser() -> argparse.ArgumentParser:
     serve_parser.add_argument("--group-id", default="home", help="Persistent Nxxt group identifier (default: home)")
     serve_parser.add_argument("--state-db", help="SQLite state database path (default: OS user data directory)")
     serve_parser.add_argument("--sync", action="store_true",
-                              help="Enable authenticated, read-only live synchronization")
+                              help="Enable authenticated live synchronization and allow-listed commands")
     serve_parser.add_argument("--sync-host", default="127.0.0.1",
                               help="Sync interface (explicitly set LAN IP for remote clients)")
     serve_parser.add_argument("--sync-port", type=int, default=10087)
-    serve_parser.add_argument("--sync-token-env", default="NXXT_SYNC_TOKEN",
-                              help="Environment variable containing the pairing token")
 
     # Command: provision
     prov_parser = subparsers.add_parser(
