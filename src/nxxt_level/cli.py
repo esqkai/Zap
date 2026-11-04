@@ -26,6 +26,8 @@ from nxxt_level.device.server import StripDeviceServer
 from nxxt_level.device.state import PowerStripState
 from nxxt_level.sync.hub import StateHub
 from nxxt_level.sync.serialization import serialize_strip
+from nxxt_level.group_store import GroupStore
+from nxxt_level.group_service import PersistentGroupService
 
 logging.basicConfig(
     level=logging.INFO,
@@ -147,6 +149,10 @@ def cmd_provision(args: argparse.Namespace) -> int:
 async def _run_server(args: argparse.Namespace) -> int:
     """Run async device server with live terminal monitoring."""
     hub = StateHub()
+    state_db = args.state_db or _default_state_database()
+    group_store = GroupStore(state_db)
+    group_service = await PersistentGroupService.open(args.group_id, group_store, hub)
+    logger.info("Loaded Nxxt group '%s' from %s", args.group_id, state_db)
     pending_updates = set()
 
     def on_state_updated(state: PowerStripState) -> None:
@@ -202,6 +208,21 @@ async def _run_server(args: argparse.Namespace) -> int:
     return 0
 
 
+
+def _default_state_database() -> str:
+    """Return a per-user writable state database path on Windows/Linux."""
+    if os.name == "nt":
+        root = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        directory = os.path.join(root, "NxxtLevel")
+    else:
+        root = os.environ.get("XDG_STATE_HOME") or os.path.join(
+            os.path.expanduser("~"), ".local", "state"
+        )
+        directory = os.path.join(root, "nxxt-level")
+    os.makedirs(directory, exist_ok=True)
+    return os.path.join(directory, "groups.sqlite3")
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     """Entry point for `zap serve`."""
     try:
@@ -245,6 +266,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Interval in seconds between telemetry polling queries (default: 5.0)",
     )
 
+    serve_parser.add_argument("--group-id", default="home", help="Persistent Nxxt group identifier (default: home)")
+    serve_parser.add_argument("--state-db", help="SQLite state database path (default: OS user data directory)")
     serve_parser.add_argument("--sync", action="store_true",
                               help="Enable authenticated, read-only live synchronization")
     serve_parser.add_argument("--sync-host", default="127.0.0.1",
