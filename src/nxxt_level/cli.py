@@ -300,6 +300,15 @@ def build_parser() -> argparse.ArgumentParser:
                               help="Sync interface (explicitly set LAN IP for remote clients)")
     serve_parser.add_argument("--sync-port", type=int, default=10087)
 
+    # Command: one-time first-run bootstrap
+    bootstrap_parser = subparsers.add_parser("bootstrap", help="Create the first local group member")
+    bootstrap_parser.add_argument("--member-id", required=True)
+    bootstrap_parser.add_argument("--name", required=True)
+    bootstrap_parser.add_argument("--platform", choices=("windows", "linux", "macos"), required=True)
+    bootstrap_parser.add_argument("--capability", action="append", default=[])
+    bootstrap_parser.add_argument("--group-id", default="home")
+    bootstrap_parser.add_argument("--state-db")
+
     # Command: provision
     prov_parser = subparsers.add_parser(
         "provision",
@@ -350,6 +359,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.command == "serve":
         return cmd_serve(args)
+    elif args.command == "bootstrap":
+        return cmd_bootstrap(args)
     elif args.command == "provision":
         return cmd_provision(args)
     else:
