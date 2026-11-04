@@ -70,6 +70,7 @@ class GroupStore:
                 {
                     "strip_id": s.strip_id,
                     "display_name": s.display_name,
+                    "device_mac": s.device_mac,
                     "outlet_names": {str(ch): name for ch, name in s.outlet_names.items()},
                 }
                 for s in group.strips.values()
@@ -128,7 +129,7 @@ class GroupStore:
             names = {int(ch): name for ch, name in item["outlet_names"].items()}
             if set(names) != {1, 2, 3, 4}:
                 raise GroupError("Persisted strip must contain exactly four outlet names")
-            group.add_strip(Strip(item["strip_id"], item["display_name"], names))
+            group.add_strip(Strip(item["strip_id"], item["display_name"], names, item.get("device_mac")))
         sudo = row["sudo_member_id"]
         if sudo is not None and sudo not in group.members:
             raise GroupError("Persisted Sudo member does not exist")
