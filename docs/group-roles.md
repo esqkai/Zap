@@ -67,3 +67,21 @@ AI integration is deferred and optional. Core functionality must remain availabl
 This is the credential and transport foundation, not yet a complete end-user pairing wizard. Invitation creation and redemption are service APIs; they are not yet exposed as a polished GUI workflow. The current WebSocket stream is read-only, and does not yet expose authenticated group mutation, Sudo claim/release, outlet commands, or online-presence lifecycle. Group state currently streams to authenticated group members; per-field visibility policies are not implemented.
 
 The stream uses `ws://` unless deployed behind a separately configured TLS terminator. Member tokens are bearer credentials; use only on a trusted LAN until TLS and a secure invitation-delivery flow are implemented. Do not expose the sync port to the public internet.
+
+
+## Authenticated command foundation
+
+The WebSocket transport now accepts request/response messages after per-member authentication. Commands are allow-listed; arbitrary shell, Python, filesystem or generic device commands are not exposed.
+
+Supported command intents:
+- Claim or release the vacant Sudo role (only an online member can claim).
+- Rename a strip or outlet (Sudo only).
+- Bind a named strip record to a physical device MAC (Sudo only).
+- Assign or unassign a laptop charger outlet (Sudo only).
+- Switch an outlet (Sudo or an Endpoint explicitly assigned to that strip/channel).
+
+A logical strip must be explicitly bound to a physical strip MAC before relay commands can target it. A successful relay command requires the device session to return refreshed telemetry confirming the requested state; timeout or mismatch is an error, not success.
+
+The command handler is wired into the controller's optional sync server. Authenticated connections update persisted online presence; disconnect marks the member offline. The server rechecks the member credential for each command so revocation applies to an existing session.
+
+This remains an early LAN-only foundation: no TLS is built in, no GUI pairing/invitation or command controls are finished, and the transport is not suitable for public internet exposure. The strip protocol and hardware acknowledgement behavior still require testing on the user's physical MTTL-W01 before relying on remote relay switching.
