@@ -22,7 +22,7 @@ class StateHub:
     def __init__(self, max_queue: int = 128) -> None:
         self._lock = asyncio.Lock()
         self._revision = 0
-        self._state: Dict[str, Any] = {"devices": {}, "automation": {}}
+        self._state: Dict[str, Any] = {"devices": {}, "automation": {}, "groups": {}}
         self._subscribers: Set[Subscriber] = set()
         self._max_queue = max_queue
 
@@ -47,7 +47,7 @@ class StateHub:
 
     async def publish(self, section: str, key: str, value: Any) -> int:
         """Replace one controller-owned entry; notify clients in revision order."""
-        if section not in ("devices", "automation"):
+        if section not in ("devices", "automation", "groups"):
             raise ValueError("Unknown state section")
         async with self._lock:
             safe_value = copy.deepcopy(value)
