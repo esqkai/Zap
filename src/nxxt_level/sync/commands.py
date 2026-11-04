@@ -85,6 +85,14 @@ class GroupCommandHandler:
             )
             return {"ok": True, "result": "charger_unassigned"}
 
+        if command == "set_push_notifications":
+            self._require_sudo(member_id)
+            enabled = message.get("enabled")
+            if not isinstance(enabled, bool):
+                raise CommandError("enabled must be a boolean")
+            await self.groups.set_push_notifications(enabled, member_id)
+            return {"ok": True, "result": "push_notifications_updated"}
+
         if command == "set_outlet":
             strip_id = self._string(message, "strip_id")
             channel = message.get("channel")
