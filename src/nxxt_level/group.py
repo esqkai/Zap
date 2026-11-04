@@ -32,6 +32,7 @@ class Strip:
     outlet_names: Dict[int, str] = field(default_factory=lambda: {
         channel: f"Outlet {channel}" for channel in range(1, 5)
     })
+    device_mac: Optional[str] = None
 
 
 class GroupRegistry:
