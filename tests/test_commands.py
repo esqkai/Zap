@@ -156,8 +156,8 @@ class TestGroupCommandHandler(unittest.IsolatedAsyncioTestCase):
 
     async def test_sudo_role_is_exclusive_and_manual(self):
         await self.handler.handle("pc", {"command": "release_sudo"})
-        with self.assertRaises(Exception):
-            await self.handler.handle("laptop", {"command": "claim_sudo"})
-        await self.groups.set_member_online("laptop", True)
+        # Once Sudo is vacant, any online Endpoint may explicitly claim it.
         await self.handler.handle("laptop", {"command": "claim_sudo"})
         self.assertEqual(self.groups.group.sudo_member_id, "laptop")
+        with self.assertRaises(CommandError):
+            await self.handler.handle("pc", {"command": "claim_sudo"})
