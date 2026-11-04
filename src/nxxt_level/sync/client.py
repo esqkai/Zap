@@ -48,3 +48,32 @@ async def watch_controller(uri: str, member_id: str, token: str) -> AsyncIterato
             pass
         await asyncio.sleep(delay)
         delay = min(delay * 2, 30.0)
+
+
+async def issue_command(uri: str, member_id: str, token: str,
+                        payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Open an authenticated session, issue one allow-listed command, await result."""
+    from uuid import uuid4
+    from websockets.asyncio.client import connect
+
+    if not uri.startswith(("ws://", "wss://")):
+        raise ValueError("Expected a WebSocket URL")
+    if not member_id or len(token) < 32:
+        raise ValueError("A member ID and pairing token are required")
+    request_id = uuid4().hex
+    async with connect(uri, open_timeout=5, max_size=1024 * 1024) as ws:
+        await ws.send(json.dumps({
+            "type": "auth", "member_id": member_id, "token": token,
+        }))
+        await ws.send(json.dumps({
+            "type": "command", "request_id": request_id, "payload": payload,
+        }))
+        async for raw in ws:
+            message = json.loads(raw)
+            if (isinstance(message, dict)
+                    and message.get("type") == "command_result"
+                    and message.get("request_id") == request_id):
+                if not message.get("ok"):
+                    raise RuntimeError(message.get("error", "Command rejected"))
+                return message.get("result", {})
+    raise ConnectionError("Controller disconnected before returning a command result")
