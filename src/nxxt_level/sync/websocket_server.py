@@ -16,6 +16,9 @@ async def serve_sync(hub: StateHub, credentials: CredentialStore,
     """Serve snapshots and optional authorized commands over WebSocket."""
     from websockets.asyncio.server import serve
 
+    presence_counts: dict[str, int] = {}
+    presence_lock = asyncio.Lock()
+
     async def handle(ws: Any) -> None:
         try:
             raw = await asyncio.wait_for(ws.recv(), timeout=5)
@@ -32,7 +35,11 @@ async def serve_sync(hub: StateHub, credentials: CredentialStore,
                 if member_id not in group_service.group.members:
                     await ws.close(code=1008, reason="Unknown group member")
                     return
-                await group_service.set_member_online(member_id, True)
+                async with presence_lock:
+                    count = presence_counts.get(member_id, 0)
+                    presence_counts[member_id] = count + 1
+                    if count == 0:
+                        await group_service.set_member_online(member_id, True)
         except (asyncio.TimeoutError, ValueError, TypeError):
             await ws.close(code=1008, reason="Invalid authentication")
             return
@@ -91,7 +98,13 @@ async def serve_sync(hub: StateHub, credentials: CredentialStore,
             await hub.unsubscribe(subscriber)
             if group_service is not None and member_id in group_service.group.members:
                 try:
-                    await group_service.set_member_online(member_id, False)
+                    async with presence_lock:
+                        count = presence_counts.get(member_id, 0) - 1
+                        if count <= 0:
+                            presence_counts.pop(member_id, None)
+                            await group_service.set_member_online(member_id, False)
+                        else:
+                            presence_counts[member_id] = count
                 except Exception:
                     pass
 
