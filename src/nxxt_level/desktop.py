@@ -5,7 +5,7 @@ import asyncio
 import os
 import sys
 
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QThread, Signal, QSettings
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QFormLayout, QFrame, QGridLayout, QHBoxLayout,
     QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton,
@@ -113,6 +113,7 @@ class MainWindow(QMainWindow):
         self.member_id = ""
         self.token = ""
         self.pending_command = False
+        self.settings = QSettings("NxxtLevel", "NxxtLevel")
 
         body = QWidget()
         self.setCentralWidget(body)
