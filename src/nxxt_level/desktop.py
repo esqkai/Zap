@@ -455,13 +455,20 @@ class MainWindow(QMainWindow):
 
     def pair_completed(self, result: object) -> None:
         self.pair_button.setEnabled(True)
-        self.member_field.setText(result.get("member_id", ""))
-        self.token_field.setText(result.get("token", ""))
-        QMessageBox.information(
-            self, "Computer paired",
-            "This computer has been paired. Save its member token in a password manager. "
-            "The token is shown only in this session. Connect when ready.",
-        )
+        paired_id = result.get("member_id", "")
+        paired_token = result.get("token", "")
+        self.member_field.setText(paired_id)
+        self.token_field.setText(paired_token)
+        self.settings.setValue("member_id", paired_id)
+        try:
+            import keyring
+            keyring.set_password("NxxtLevel", paired_id, paired_token)
+            message = "The member token has been saved in this operating system's credential vault."
+        except Exception:
+            message = ("The operating-system credential vault is unavailable. "
+                       "Copy and save this token securely; it will not be shown again "
+                       "after closing the app.\n\n" + paired_token)
+        QMessageBox.information(self, "Computer paired", message)
 
     def pair_failed(self, error: str) -> None:
         self.pair_button.setEnabled(True)
