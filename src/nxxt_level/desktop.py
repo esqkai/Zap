@@ -9,7 +9,7 @@ from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QFormLayout, QFrame, QGridLayout, QHBoxLayout,
     QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton,
-    QTabWidget, QVBoxLayout, QWidget, QCheckBox,
+    QTabWidget, QVBoxLayout, QWidget,
 )
 
 from nxxt_level.sync.client import issue_command, pair_with_controller, watch_controller
@@ -217,9 +217,27 @@ class MainWindow(QMainWindow):
         row.addWidget(self.invite_button)
         layout.addLayout(row)
         layout.addWidget(self.pair_button)
+        layout.addWidget(QLabel("Assign a computer to its charger outlet"))
+        self.member_picker = QComboBox()
+        self.assignment_picker = QComboBox()
+        assignment_row = QHBoxLayout()
+        assignment_row.addWidget(self.member_picker, 1)
+        assignment_row.addWidget(self.assignment_picker, 1)
+        layout.addLayout(assignment_row)
+        assignment_actions = QHBoxLayout()
+        self.assign_button = QPushButton("Assign charger")
+        self.assign_button.clicked.connect(self.assign_charger)
+        self.unassign_button = QPushButton("Remove assignment")
+        self.unassign_button.clicked.connect(self.unassign_charger)
+        self.push_button = QPushButton("Toggle Sudo notifications")
+        self.push_button.clicked.connect(self.toggle_push_notifications)
+        for button in (self.assign_button, self.unassign_button, self.push_button):
+            button.setEnabled(False)
+            assignment_actions.addWidget(button)
+        layout.addLayout(assignment_actions)
         layout.addWidget(QLabel(
-            "Charger pairing and invitation management will be added here next. "
-            "Battery monitoring remains optional per computer."
+            "Battery monitoring is optional per computer. Push notification delivery "
+            "is not yet connected; this setting controls the future recipient preference."
         ))
         layout.addStretch()
 
@@ -348,6 +366,49 @@ class MainWindow(QMainWindow):
         self.rename_strip_button.setEnabled(mine_is_sudo and bool(strip_id))
         self.rename_outlet_button.setEnabled(mine_is_sudo and bool(strip_id))
         self.invite_button.setEnabled(mine_is_sudo and not self.pending_command)
+        self.assign_button.setEnabled(mine_is_sudo and bool(members) and bool(self.groups) and not self.pending_command)
+        self.unassign_button.setEnabled(mine_is_sudo and bool(members) and not self.pending_command)
+        self.push_button.setEnabled(mine_is_sudo and not self.pending_command)
+        self.member_picker.blockSignals(True)
+        old_member = self.member_picker.currentData()
+        self.member_picker.clear()
+        for member_id, member in members.items():
+            self.member_picker.addItem(member.get("display_name", member_id), member_id)
+        member_index = self.member_picker.findData(old_member)
+        if member_index >= 0:
+            self.member_picker.setCurrentIndex(member_index)
+        self.member_picker.blockSignals(False)
+        self.assignment_picker.clear()
+        for sid, item in self.groups.items():
+            for ch in range(1, 5):
+                outlet_name = item.get("outlet_names", {}).get(str(ch), f"Outlet {ch}")
+                self.assignment_picker.addItem(
+                    f"{item.get('display_name', sid)} · {outlet_name}", (sid, ch)
+                )
+
+    def assign_charger(self) -> None:
+        member_id = self.member_picker.currentData()
+        assignment = self.assignment_picker.currentData()
+        if member_id and assignment:
+            strip_id, channel = assignment
+            self.send_command({
+                "command": "assign_charger", "member_id": member_id,
+                "strip_id": strip_id, "channel": channel,
+            })
+
+    def unassign_charger(self) -> None:
+        member_id = self.member_picker.currentData()
+        assignment = self.assignment_picker.currentData()
+        if member_id and assignment:
+            strip_id, _ = assignment
+            self.send_command({
+                "command": "unassign_charger", "member_id": member_id,
+                "strip_id": strip_id,
+            })
+
+    def toggle_push_notifications(self) -> None:
+        enabled = not bool(getattr(self, "group_state", {}).get("push_notifications_enabled", True))
+        self.send_command({"command": "set_push_notifications", "enabled": enabled})
 
     def create_invitation(self) -> None:
         self.send_command({"command": "create_pairing_invite", "ttl_seconds": 300})
