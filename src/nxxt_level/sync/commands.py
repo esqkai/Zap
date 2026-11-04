@@ -33,11 +33,17 @@ class GroupCommandHandler:
             return {"ok": True, "pairing_code": code, "expires_in": ttl}
 
         if command == "claim_sudo":
-            await self.groups.claim_sudo(member_id)
+            try:
+                await self.groups.claim_sudo(member_id)
+            except GroupError as exc:
+                raise CommandError(str(exc)) from exc
             return {"ok": True, "result": "sudo_claimed"}
 
         if command == "release_sudo":
-            await self.groups.release_sudo(member_id)
+            try:
+                await self.groups.release_sudo(member_id)
+            except GroupError as exc:
+                raise CommandError(str(exc)) from exc
             return {"ok": True, "result": "sudo_released"}
 
         if command == "register_strip":
