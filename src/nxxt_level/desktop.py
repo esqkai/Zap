@@ -21,14 +21,14 @@ class SyncThread(QThread):
     event_received = Signal(object)
     connection_state = Signal(str)
 
-    def __init__(self, uri: str, token: str) -> None:
+    def __init__(self, uri: str, member_id: str, token: str) -> None:
         super().__init__()
-        self.uri, self.token = uri, token
+        self.uri, self.member_id, self.token = uri, member_id, token
 
     def run(self) -> None:
         async def listen() -> None:
             self.connection_state.emit("Connecting…")
-            async for event in watch_controller(self.uri, self.token):
+            async for event in watch_controller(self.uri, self.member_id, self.token):
                 if self.isInterruptionRequested():
                     break
                 self.connection_state.emit("Connected")
@@ -81,10 +81,12 @@ class MainWindow(QMainWindow):
         layout.addWidget(subtitle)
         form = QFormLayout()
         self.endpoint = QLineEdit(os.environ.get("NXXT_SYNC_URL", "ws://127.0.0.1:10087"))
-        self.secret = QLineEdit(os.environ.get("NXXT_SYNC_TOKEN", ""))
+        self.member_id = QLineEdit(os.environ.get("NXXT_MEMBER_ID", ""))
+        self.secret = QLineEdit(os.environ.get("NXXT_MEMBER_TOKEN", ""))
         self.secret.setEchoMode(QLineEdit.EchoMode.Password)
         form.addRow("Controller URL", self.endpoint)
-        form.addRow("Pairing token", self.secret)
+        form.addRow("Member ID", self.member_id)
+        form.addRow("Member token", self.secret)
         layout.addLayout(form)
         row = QHBoxLayout()
         self.connect_button = QPushButton("Connect")
@@ -120,10 +122,11 @@ class MainWindow(QMainWindow):
         if self.worker and self.worker.isRunning():
             return
         token = self.secret.text()
-        if len(token) < 32:
-            self.connection.setText("Pairing token must be at least 32 characters")
+        member_id = self.member_id.text().strip()
+        if not member_id or len(token) < 32:
+            self.connection.setText("Enter your member ID and pairing token")
             return
-        self.worker = SyncThread(self.endpoint.text().strip(), token)
+        self.worker = SyncThread(self.endpoint.text().strip(), member_id, token)
         self.worker.event_received.connect(self.handle_event)
         self.worker.connection_state.connect(self.connection.setText)
         self.worker.start()
