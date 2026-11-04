@@ -45,3 +45,12 @@ The MTTL-W01 still requires a reachable device connection hub. Sudo is a user-co
 Secrets such as Wi-Fi passwords, pairing tokens and device credentials are not stored here. Online presence is deliberately reset to offline on load because it must be re-established by a live authenticated connection.
 
 The store is a local persistence primitive. It is not yet a distributed database or a multi-host conflict-resolution system. The connection hub must be the single writer for a group, and changes must be committed transactionally before being broadcast. Multi-controller replication is not implemented.
+
+
+## Optional local AI / guardrail integration
+
+A local model is not required for device control, group synchronization, battery monitoring or charging automation. The deterministic policy and command layer remains authoritative.
+
+Granite Guardian is a risk-scoring/guardrail model, not a general-purpose conversational assistant. If added later, it may inspect natural-language requests or proposed assistant explanations as an additional advisory check. Its result must never grant Sudo, bypass member permissions, choose a relay state on its own, or replace physical-device acknowledgement. The model must not run in the telemetry or battery-control loop.
+
+AI integration is deferred and optional. Core functionality must remain available when no model is installed or the model process is stopped.
