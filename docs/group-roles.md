@@ -20,3 +20,15 @@ Each strip has a group-wide display name and four group-wide outlet names. Names
 The eventual network service must authenticate each member separately, enforce Sudo and outlet permissions on the controller (not merely in the UI), serialize role claims atomically, and publish role/name changes to all clients. A disconnected Sudo must not trigger an automatic nomination. The user must explicitly claim the vacant role.
 
 The MTTL-W01 still requires a reachable device connection hub. Sudo is a user-control role and does not itself move the strip's configured TCP destination.
+
+
+## Strip names, charger pairing and notifications
+
+- Every strip has a group-wide display name.
+- Every strip outlet (1–4) has a group-wide display name.
+- A member with the optional `battery_monitoring` capability can be paired with one charger outlet per strip. An outlet can be assigned to only one member's charger automation on that strip.
+- Battery automation must use the explicit laptop-to-outlet assignment; it must never guess which charger belongs to which laptop.
+- Automation push notifications are routed only to the current Sudo. With no Sudo, or when notifications are disabled by Sudo, no push recipient is returned.
+- Notification text includes the laptop/member name, battery percentage, outlet name and strip name.
+- An event saying the assistant switched a charger on/off may be emitted only after the physical strip has confirmed the corresponding relay state. A requested command or optimistic UI update is not confirmation.
+- The 100% stop rule is a proposed automation policy; hysteresis, thresholds, user enablement, and physical relay confirmation must be implemented and tested before it can operate hardware.
