@@ -253,7 +253,16 @@ class MainWindow(QMainWindow):
 
     def command_completed(self, result: object) -> None:
         self.pending_command = False
-        self.connection.setText("Command confirmed")
+        if isinstance(result, dict) and result.get("pairing_code"):
+            QMessageBox.information(
+                self, "Pairing invitation",
+                "Share this one-time code with the computer you want to add. "
+                "It expires in five minutes and can be used once:\n\n"
+                + result["pairing_code"],
+            )
+            self.connection.setText("Invitation created")
+        else:
+            self.connection.setText("Command confirmed")
         self.refresh_controls()
 
     def command_failed(self, error: str) -> None:
@@ -339,6 +348,53 @@ class MainWindow(QMainWindow):
         self.rename_strip_button.setEnabled(mine_is_sudo and bool(strip_id))
         self.rename_outlet_button.setEnabled(mine_is_sudo and bool(strip_id))
         self.invite_button.setEnabled(mine_is_sudo and not self.pending_command)
+
+    def create_invitation(self) -> None:
+        self.send_command({"command": "create_pairing_invite", "ttl_seconds": 300})
+
+    def pair_this_computer(self) -> None:
+        code, ok = QInputDialog.getText(self, "Pair computer", "One-time invitation code:")
+        if not ok or not code.strip():
+            return
+        member_id, ok = QInputDialog.getText(self, "Pair computer", "Unique member ID:")
+        if not ok or not member_id.strip():
+            return
+        display_name, ok = QInputDialog.getText(self, "Pair computer", "Computer display name:")
+        if not ok or not display_name.strip():
+            return
+        platform, ok = QInputDialog.getItem(
+            self, "Pair computer", "Operating system:",
+            ["windows", "linux", "macos"], 0, False
+        )
+        if not ok:
+            return
+        battery = QMessageBox.question(
+            self, "Optional battery monitoring",
+            "Enable optional battery monitoring on this computer?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        ) == QMessageBox.StandardButton.Yes
+        self.pair_button.setEnabled(False)
+        self.pair_worker = PairThread(
+            self.endpoint.text().strip(), code.strip(), member_id.strip(),
+            display_name.strip(), platform, battery,
+        )
+        self.pair_worker.completed.connect(self.pair_completed)
+        self.pair_worker.failed.connect(self.pair_failed)
+        self.pair_worker.start()
+
+    def pair_completed(self, result: object) -> None:
+        self.pair_button.setEnabled(True)
+        self.member_field.setText(result.get("member_id", ""))
+        self.token_field.setText(result.get("token", ""))
+        QMessageBox.information(
+            self, "Computer paired",
+            "This computer has been paired. Save its member token in a password manager. "
+            "The token is shown only in this session. Connect when ready.",
+        )
+
+    def pair_failed(self, error: str) -> None:
+        self.pair_button.setEnabled(True)
+        QMessageBox.warning(self, "Pairing failed", error)
 
     def toggle_sudo(self) -> None:
         group = getattr(self, "group_state", {})
