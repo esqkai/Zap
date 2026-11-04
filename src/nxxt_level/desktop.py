@@ -55,6 +55,24 @@ class CommandThread(QThread):
             self.failed.emit(str(exc))
 
 
+class PairThread(QThread):
+    completed = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, uri: str, code: str, member_id: str,
+                 display_name: str, platform: str, battery_monitoring: bool) -> None:
+        super().__init__()
+        capabilities = ["battery_monitoring"] if battery_monitoring else []
+        self.args = (uri, code, member_id, display_name, platform, capabilities)
+
+    def run(self) -> None:
+        try:
+            result = asyncio.run(pair_with_controller(*self.args))
+            self.completed.emit(result)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
 class OutletCard(QFrame):
     def __init__(self, channel: int, callback) -> None:
         super().__init__()
@@ -91,6 +109,7 @@ class MainWindow(QMainWindow):
         self.groups: dict = {}
         self.worker = None
         self.command_worker = None
+        self.pair_worker = None
         self.member_id = ""
         self.token = ""
         self.pending_command = False
