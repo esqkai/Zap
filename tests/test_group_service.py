@@ -69,6 +69,22 @@ class TestPersistentGroupService(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await self.service.create_pairing_invite("endpoint", self.credentials)
 
+
+    async def test_charger_assignment_grants_and_unassignment_revokes_outlet_control(self):
+        await self.service.add_member(Member("laptop", "Arch Laptop", "linux"))
+        await self.service.add_strip(Strip("strip-1", "Office Strip"))
+        await self.service.assign_charger("laptop", "strip-1", 2)
+        self.assertTrue(self.service.group.can_control_outlet("laptop", "strip-1", 2))
+        self.assertFalse(self.service.group.can_control_outlet("laptop", "strip-1", 1))
+        await self.service.unassign_charger("laptop", "strip-1")
+        self.assertFalse(self.service.group.can_control_outlet("laptop", "strip-1", 2))
+
+    async def test_charger_assignment_rejects_boolean_channel(self):
+        await self.service.add_member(Member("laptop", "Arch Laptop", "linux"))
+        await self.service.add_strip(Strip("strip-1", "Office Strip"))
+        with self.assertRaises(ValueError):
+            await self.service.assign_charger("laptop", "strip-1", True)
+
     async def test_failed_database_write_rolls_back_and_is_not_broadcast(self):
         subscriber = await self.hub.subscribe()
         await subscriber.queue.get()
