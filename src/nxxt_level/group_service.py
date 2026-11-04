@@ -144,7 +144,7 @@ class PersistentGroupService:
                 await asyncio.to_thread(self.store.save, self.group)
             except Exception:
                 self.group = previous
-                await asyncio.to_thread(credentials.revoke, member.member_id)
+                await asyncio.to_thread(credentials.discard_uncommitted, member.member_id)
                 raise
             await self.hub.publish("groups", self.group.group_id, self.snapshot())
             return token
