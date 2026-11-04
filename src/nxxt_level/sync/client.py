@@ -77,3 +77,33 @@ async def issue_command(uri: str, member_id: str, token: str,
                     raise RuntimeError(message.get("error", "Command rejected"))
                 return message.get("result", {})
     raise ConnectionError("Controller disconnected before returning a command result")
+
+
+async def pair_with_controller(uri: str, pairing_code: str, member_id: str,
+                               display_name: str, platform: str,
+                               capabilities: list[str] | None = None) -> Dict[str, Any]:
+    """Redeem a one-time invitation and return the newly issued member credential."""
+    from websockets.asyncio.client import connect
+
+    if not uri.startswith(("ws://", "wss://")):
+        raise ValueError("Expected a WebSocket URL")
+    if not pairing_code or not member_id or not display_name:
+        raise ValueError("Pairing code, member ID and display name are required")
+    async with connect(uri, open_timeout=5, max_size=16384) as ws:
+        await ws.send(json.dumps({
+            "type": "pair",
+            "pairing_code": pairing_code,
+            "member": {
+                "member_id": member_id,
+                "display_name": display_name,
+                "platform": platform,
+                "capabilities": capabilities or [],
+            },
+        }))
+        raw = await asyncio.wait_for(ws.recv(), timeout=8)
+        result = json.loads(raw)
+        if not isinstance(result, dict) or result.get("type") != "pairing_result":
+            raise RuntimeError("Controller returned an invalid pairing response")
+        if not result.get("ok"):
+            raise RuntimeError(result.get("error", "Pairing was rejected"))
+        return result
