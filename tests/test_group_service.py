@@ -85,6 +85,24 @@ class TestPersistentGroupService(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await self.service.assign_charger("laptop", "strip-1", True)
 
+
+    async def test_local_bootstrap_creates_first_member_once(self):
+        member = Member("first-pc", "Main PC", "windows")
+        token = await self.service.bootstrap_first_member(member, self.credentials)
+        self.assertTrue(self.credentials.authenticate("first-pc", token))
+        self.assertIn("first-pc", self.service.group.members)
+        with self.assertRaises(ValueError):
+            await self.service.bootstrap_first_member(
+                Member("second-pc", "Second PC", "windows"), self.credentials
+            )
+
+    async def test_bootstrap_token_is_not_reissued_when_credential_store_is_initialized(self):
+        self.credentials.redeem_bootstrap("orphaned-member")
+        with self.assertRaises(ValueError):
+            await self.service.bootstrap_first_member(
+                Member("first-pc", "Main PC", "windows"), self.credentials
+            )
+
     async def test_failed_database_write_rolls_back_and_is_not_broadcast(self):
         subscriber = await self.hub.subscribe()
         await subscriber.queue.get()
