@@ -28,6 +28,7 @@ from nxxt_level.sync.hub import StateHub
 from nxxt_level.sync.serialization import serialize_strip
 from nxxt_level.group_store import GroupStore
 from nxxt_level.group_service import PersistentGroupService
+from nxxt_level.group import Member
 from nxxt_level.pairing import CredentialStore
 from nxxt_level.sync.commands import GroupCommandHandler
 
