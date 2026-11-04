@@ -23,7 +23,43 @@ async def serve_sync(hub: StateHub, credentials: CredentialStore,
         try:
             raw = await asyncio.wait_for(ws.recv(), timeout=5)
             auth = json.loads(raw)
-            if not isinstance(auth, dict) or auth.get("type") != "auth":
+            if not isinstance(auth, dict):
+                raise ValueError("Invalid handshake message")
+            if auth.get("type") == "pair":
+                if group_service is None:
+                    raise ValueError("Pairing is unavailable")
+                profile = auth.get("member")
+                if not isinstance(profile, dict):
+                    raise ValueError("Member profile is required")
+                member_id = profile.get("member_id")
+                display_name = profile.get("display_name")
+                platform = profile.get("platform")
+                capabilities = profile.get("capabilities", [])
+                if not isinstance(member_id, str) or not member_id.strip() or len(member_id) > 128:
+                    raise ValueError("Invalid member ID")
+                if not isinstance(display_name, str) or not display_name.strip() or len(display_name) > 64:
+                    raise ValueError("Invalid display name")
+                if platform not in ("windows", "linux", "macos"):
+                    raise ValueError("Unsupported platform")
+                if not isinstance(capabilities, list) or any(
+                    item not in ("battery_monitoring",) for item in capabilities
+                ):
+                    raise ValueError("Unsupported member capability")
+                code = auth.get("pairing_code")
+                if not isinstance(code, str):
+                    raise ValueError("Pairing code is required")
+                paired_member = Member(member_id.strip(), display_name.strip(), platform,
+                                       capabilities=set(capabilities))
+                paired_token = await group_service.redeem_pairing_invite(
+                    code, paired_member, credentials
+                )
+                await ws.send(json.dumps({
+                    "type": "pairing_result", "ok": True,
+                    "member_id": paired_member.member_id, "token": paired_token,
+                }, separators=(",", ":")))
+                await ws.close(code=1000, reason="Pairing complete")
+                return
+            if auth.get("type") != "auth":
                 raise ValueError("Invalid authentication message")
             member_id, token = auth.get("member_id"), auth.get("token")
             if not isinstance(member_id, str) or not isinstance(token, str):
