@@ -147,7 +147,7 @@ All tests execute completely offline without requiring physical hardware:
 python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-All 27 unit and integration tests verify:
+The offline unit and integration suite verifies:
 - Message framing and null-byte cleanup
 - Command generation and syntax constraints
 - Robust protocol parsing and error resilience
