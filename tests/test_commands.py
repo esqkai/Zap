@@ -103,6 +103,46 @@ class TestGroupCommandHandler(unittest.IsolatedAsyncioTestCase):
                 "channel": 1, "on": True,
             })
 
+
+    async def test_sudo_can_assign_charger_and_endpoint_can_control_only_that_outlet(self):
+        await self.handler.handle("pc", {
+            "command": "assign_charger", "member_id": "laptop",
+            "strip_id": "living-room", "channel": 3,
+        })
+        await self.handler.handle("pc", {
+            "command": "bind_strip_device", "strip_id": "living-room",
+            "device_mac": "AA:BB:CC:DD:EE:FF",
+        })
+        result = await self.handler.handle("laptop", {
+            "command": "set_outlet", "strip_id": "living-room",
+            "channel": 3, "on": True,
+        })
+        self.assertTrue(result["ok"])
+        with self.assertRaises(CommandError):
+            await self.handler.handle("laptop", {
+                "command": "set_outlet", "strip_id": "living-room",
+                "channel": 2, "on": True,
+            })
+
+    async def test_only_sudo_can_change_notification_preference(self):
+        await self.handler.handle("pc", {
+            "command": "set_push_notifications", "enabled": False,
+        })
+        self.assertFalse(self.groups.group.push_notifications_enabled)
+        with self.assertRaises(CommandError):
+            await self.handler.handle("laptop", {
+                "command": "set_push_notifications", "enabled": True,
+            })
+
+    async def test_sudo_can_create_pairing_invite_only_when_credentials_available(self):
+        from nxxt_level.pairing import CredentialStore
+        credentials = CredentialStore(str(Path(self.temp.name) / "credentials.sqlite3"))
+        self.handler.credentials = credentials
+        result = await self.handler.handle("pc", {"command": "create_pairing_invite"})
+        self.assertTrue(result["pairing_code"])
+        with self.assertRaises(CommandError):
+            await self.handler.handle("laptop", {"command": "create_pairing_invite"})
+
     async def test_sudo_role_is_exclusive_and_manual(self):
         await self.handler.handle("pc", {"command": "release_sudo"})
         with self.assertRaises(Exception):
