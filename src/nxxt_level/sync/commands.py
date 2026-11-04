@@ -11,15 +11,26 @@ class CommandError(ValueError):
 
 
 class GroupCommandHandler:
-    def __init__(self, group_service: Any, device_server: Any) -> None:
+    def __init__(self, group_service: Any, device_server: Any, credentials: Any = None) -> None:
         self.groups = group_service
         self.devices = device_server
+        self.credentials = credentials
 
     async def handle(self, member_id: str, message: dict) -> dict:
         if not isinstance(message, dict):
             raise CommandError("Command must be an object")
         command = message.get("command")
         group = self.groups.group
+
+        if command == "create_pairing_invite":
+            self._require_sudo(member_id)
+            if self.credentials is None:
+                raise CommandError("Pairing credentials are unavailable")
+            ttl = message.get("ttl_seconds", 300)
+            if isinstance(ttl, bool) or not isinstance(ttl, int):
+                raise CommandError("ttl_seconds must be an integer")
+            code = await self.groups.create_pairing_invite(member_id, self.credentials, ttl)
+            return {"ok": True, "pairing_code": code, "expires_in": ttl}
 
         if command == "claim_sudo":
             await self.groups.claim_sudo(member_id)
