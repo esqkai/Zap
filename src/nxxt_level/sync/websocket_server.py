@@ -49,6 +49,7 @@ async def serve_sync(hub: StateHub, credentials: CredentialStore,
 
         async def receive_commands() -> None:
             async for raw_command in ws:
+                request = {}
                 try:
                     request = json.loads(raw_command)
                     if not isinstance(request, dict) or request.get("type") != "command":
