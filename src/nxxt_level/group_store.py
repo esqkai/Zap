@@ -132,7 +132,9 @@ class GroupStore:
         sudo = row["sudo_member_id"]
         if sudo is not None and sudo not in group.members:
             raise GroupError("Persisted Sudo member does not exist")
-        group.sudo_member_id = sudo
+        # Sudo is an active-session role, never silently restored after restart.
+        # The previous identity remains registered but must manually claim again.
+        group.sudo_member_id = None
         group.push_notifications_enabled = bool(row["push_notifications_enabled"])
         group.revision = int(row["revision"])
         return group
