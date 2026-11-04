@@ -54,7 +54,7 @@ class CredentialStore:
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             count = db.execute(
-                "SELECT COUNT(*) FROM member_credentials WHERE revoked_at IS NULL"
+                "SELECT COUNT(*) FROM member_credentials"
             ).fetchone()[0]
             if count:
                 raise ValueError("Bootstrap is already complete")
@@ -113,6 +113,15 @@ class CredentialStore:
                 (member_id,),
             ).fetchone()
         return bool(row and hmac.compare_digest(row[0], _digest(token)))
+
+
+    def discard_uncommitted(self, member_id: str) -> None:
+        """Remove a just-issued credential when its group transaction rolls back."""
+        with self._connect() as db:
+            db.execute(
+                "DELETE FROM member_credentials WHERE member_id = ?",
+                (member_id,),
+            )
 
     def revoke(self, member_id: str) -> bool:
         with self._connect() as db:
