@@ -128,6 +128,27 @@ class PersistentGroupService:
         strip.device_mac = device_mac
         self.group._changed()
 
+    async def bootstrap_first_member(self, member, credentials: CredentialStore) -> str:
+        """Create the first local member exactly once; intended for console bootstrap."""
+        async with self._lock:
+            if self.group.members:
+                raise ValueError("Group is already initialized; use a Sudo pairing invitation")
+            token = await asyncio.to_thread(
+                credentials.redeem_bootstrap, member.member_id
+            )
+            previous = self.group
+            import copy
+            self.group = copy.deepcopy(self.group)
+            try:
+                self.group.add_member(member)
+                await asyncio.to_thread(self.store.save, self.group)
+            except Exception:
+                self.group = previous
+                await asyncio.to_thread(credentials.revoke, member.member_id)
+                raise
+            await self.hub.publish("groups", self.group.group_id, self.snapshot())
+            return token
+
     async def create_pairing_invite(self, actor_member_id: str,
                                     credentials: CredentialStore,
                                     ttl_seconds: int = 300) -> str:
