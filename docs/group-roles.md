@@ -32,3 +32,16 @@ The MTTL-W01 still requires a reachable device connection hub. Sudo is a user-co
 - Notification text includes the laptop/member name, battery percentage, outlet name and strip name.
 - An event saying the assistant switched a charger on/off may be emitted only after the physical strip has confirmed the corresponding relay state. A requested command or optimistic UI update is not confirmation.
 - The 100% stop rule is a proposed automation policy; hysteresis, thresholds, user enablement, and physical relay confirmation must be implemented and tested before it can operate hardware.
+
+
+## Persistence
+
+`GroupStore` stores group configuration in a local SQLite database:
+- member IDs, display names, platform labels and optional capabilities
+- outlet permissions and laptop-to-charger assignments
+- strip names and all four outlet names
+- notification preference and the last recorded Sudo identity
+
+Secrets such as Wi-Fi passwords, pairing tokens and device credentials are not stored here. Online presence is deliberately reset to offline on load because it must be re-established by a live authenticated connection.
+
+The store is a local persistence primitive. It is not yet a distributed database or a multi-host conflict-resolution system. The connection hub must be the single writer for a group, and changes must be committed transactionally before being broadcast. Multi-controller replication is not implemented.
