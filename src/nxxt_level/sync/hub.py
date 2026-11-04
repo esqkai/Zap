@@ -59,6 +59,10 @@ class StateHub:
                 # Slow clients must resubscribe for a fresh snapshot.
                 if subscriber.queue.full():
                     self._subscribers.remove(subscriber)
+                    while not subscriber.queue.empty():
+                        subscriber.queue.get_nowait()
+                    subscriber.queue.put_nowait({"type": "resync_required",
+                                                 "revision": self._revision})
                     continue
                 subscriber.queue.put_nowait(copy.deepcopy(event))
             return self._revision
