@@ -205,11 +205,18 @@ class MainWindow(QMainWindow):
         self.rename_strip_button.clicked.connect(self.rename_strip)
         self.rename_outlet_button = QPushButton("Rename outlet")
         self.rename_outlet_button.clicked.connect(self.rename_outlet)
+        self.invite_button = QPushButton("Add another computer")
+        self.invite_button.clicked.connect(self.create_invitation)
+        self.pair_button = QPushButton("Pair this computer")
+        self.pair_button.clicked.connect(self.pair_this_computer)
         self.rename_strip_button.setEnabled(False)
         self.rename_outlet_button.setEnabled(False)
+        self.invite_button.setEnabled(False)
         row.addWidget(self.rename_strip_button)
         row.addWidget(self.rename_outlet_button)
+        row.addWidget(self.invite_button)
         layout.addLayout(row)
+        layout.addWidget(self.pair_button)
         layout.addWidget(QLabel(
             "Charger pairing and invitation management will be added here next. "
             "Battery monitoring remains optional per computer."
@@ -331,6 +338,7 @@ class MainWindow(QMainWindow):
         )
         self.rename_strip_button.setEnabled(mine_is_sudo and bool(strip_id))
         self.rename_outlet_button.setEnabled(mine_is_sudo and bool(strip_id))
+        self.invite_button.setEnabled(mine_is_sudo and not self.pending_command)
 
     def toggle_sudo(self) -> None:
         group = getattr(self, "group_state", {})
