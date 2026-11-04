@@ -72,8 +72,13 @@ class GroupRegistry:
         member = self._require_member(member_id)
         if not member.online:
             raise GroupError("Only an online member can claim Sudo")
-        if self.sudo_member_id not in (None, member_id):
-            raise GroupError("Sudo is already held; release or transfer it explicitly")
+        current_sudo = self.sudo_member_id
+        if current_sudo not in (None, member_id):
+            current_member = self.members.get(current_sudo)
+            if current_member is not None and current_member.online:
+                raise GroupError("Sudo is already active on another online computer")
+            # No automatic nomination: an online Endpoint must explicitly claim.
+            self.sudo_member_id = None
         self.sudo_member_id = member_id
         self._changed()
 
