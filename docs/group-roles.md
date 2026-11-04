@@ -54,3 +54,16 @@ A local model is not required for device control, group synchronization, battery
 Granite Guardian is a risk-scoring/guardrail model, not a general-purpose conversational assistant. If added later, it may inspect natural-language requests or proposed assistant explanations as an additional advisory check. Its result must never grant Sudo, bypass member permissions, choose a relay state on its own, or replace physical-device acknowledgement. The model must not run in the telemetry or battery-control loop.
 
 AI integration is deferred and optional. Core functionality must remain available when no model is installed or the model process is stopped.
+
+
+## Individual computer pairing (foundation)
+
+- Current Sudo can create a short-lived, single-use pairing invitation (5 minutes by default).
+- Redeeming an invitation creates a distinct high-entropy member token. Only its one-way hash is stored in SQLite.
+- Each member can be revoked independently without rotating other members' credentials.
+- The read-only WebSocket stream authenticates with both `member_id` and that member's token.
+- The desktop preview now asks for member ID and member token rather than one shared group password.
+
+This is the credential and transport foundation, not yet a complete end-user pairing wizard. Invitation creation and redemption are service APIs; they are not yet exposed as a polished GUI workflow. The current WebSocket stream is read-only, and does not yet expose authenticated group mutation, Sudo claim/release, outlet commands, or online-presence lifecycle. Group state currently streams to authenticated group members; per-field visibility policies are not implemented.
+
+The stream uses `ws://` unless deployed behind a separately configured TLS terminator. Member tokens are bearer credentials; use only on a trusted LAN until TLS and a secure invitation-delivery flow are implemented. Do not expose the sync port to the public internet.
