@@ -9,10 +9,10 @@ from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QFormLayout, QFrame, QGridLayout, QHBoxLayout,
     QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QPushButton,
-    QTabWidget, QVBoxLayout, QWidget,
+    QTabWidget, QVBoxLayout, QWidget, QCheckBox,
 )
 
-from nxxt_level.sync.client import issue_command, watch_controller
+from nxxt_level.sync.client import issue_command, pair_with_controller, watch_controller
 
 
 class SyncThread(QThread):
