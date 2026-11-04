@@ -1,6 +1,7 @@
 """Allow-listed authenticated group commands; no arbitrary remote execution."""
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from nxxt_level.group import GroupError, Strip
@@ -15,8 +16,15 @@ class GroupCommandHandler:
         self.groups = group_service
         self.devices = device_server
         self.credentials = credentials
+        self._command_lock = asyncio.Lock()
 
     async def handle(self, member_id: str, message: dict) -> dict:
+        # Serialize authorization checks and actions so concurrent clients cannot
+        # race a role/assignment change against an outlet command.
+        async with self._command_lock:
+            return await self._handle(member_id, message)
+
+    async def _handle(self, member_id: str, message: dict) -> dict:
         if not isinstance(message, dict):
             raise CommandError("Command must be an object")
         command = message.get("command")
