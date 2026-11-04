@@ -25,3 +25,15 @@ No physical outlet control is enabled through the WebSocket API.
 3. Add slow-subscriber recovery and network failure tests.
 4. Add a PySide6 client, first-run pairing, and OS-specific installers.
 5. Validate all protocol operations with real MTTL-W01 hardware.
+
+## Preview controller startup
+
+Install the optional dependency: `python -m pip install "websockets>=12"`.
+Set `NXXT_SYNC_TOKEN` to a long, randomly generated secret in the controller
+environment, then run `zap serve --sync --sync-host <controller-LAN-IP>`.
+Port 10086 remains the strip's TCP connection; port 10087 is the read-only
+client stream. Keep both ports restricted to trusted local networks.
+
+The sync stream uses a shared secret but **no encryption** over `ws://`.
+Use only on a trusted, isolated LAN; use TLS before deploying on untrusted
+networks. Windows and Linux clients will share the same protocol.
