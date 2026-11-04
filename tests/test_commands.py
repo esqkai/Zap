@@ -46,6 +46,17 @@ class TestGroupCommandHandler(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         self.temp.cleanup()
 
+
+    async def test_sudo_can_register_new_strip_but_endpoint_cannot(self):
+        await self.handler.handle("pc", {
+            "command": "register_strip", "strip_id": "bedroom", "name": "Bedroom Strip",
+        })
+        self.assertIn("bedroom", self.groups.group.strips)
+        with self.assertRaises(CommandError):
+            await self.handler.handle("laptop", {
+                "command": "register_strip", "strip_id": "garage", "name": "Garage Strip",
+            })
+
     async def test_sudo_can_bind_strip_and_rename_outlet(self):
         await self.handler.handle("pc", {
             "command": "bind_strip_device", "strip_id": "living-room",
