@@ -58,6 +58,7 @@ class PersistentGroupService:
                 strip_id: {
                     "display_name": strip.display_name,
                     "outlet_names": dict(strip.outlet_names),
+                    "device_mac": strip.device_mac,
                 }
                 for strip_id, strip in group.strips.items()
             },
@@ -106,6 +107,26 @@ class PersistentGroupService:
 
     async def unassign_charger(self, member_id: str, strip_id: str) -> dict:
         return await self._mutate(self.group.unassign_charger, member_id, strip_id)
+
+
+    async def bind_strip_device(self, actor_member_id: str,
+                                strip_id: str, device_mac: str) -> dict:
+        if actor_member_id != self.group.sudo_member_id:
+            raise ValueError("Only current Sudo can bind physical strips")
+        normalized = device_mac.strip().upper()
+        if len(normalized) > 32 or not normalized:
+            raise ValueError("Invalid device MAC")
+        return await self._mutate(
+            self._set_strip_device, strip_id, normalized
+        )
+
+    def _set_strip_device(self, strip_id: str, device_mac: str) -> None:
+        strip = self.group._require_strip(strip_id)
+        if any(s.strip_id != strip_id and s.device_mac == device_mac
+               for s in self.group.strips.values()):
+            raise ValueError("This physical strip is already bound to another strip record")
+        strip.device_mac = device_mac
+        self.group._changed()
 
     async def create_pairing_invite(self, actor_member_id: str,
                                     credentials: CredentialStore,
