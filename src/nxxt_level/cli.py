@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import getpass
 import logging
+import os
 import socket
 import sys
 from typing import List, Optional
@@ -23,6 +24,8 @@ from nxxt_level.device.provisioning import (
 )
 from nxxt_level.device.server import StripDeviceServer
 from nxxt_level.device.state import PowerStripState
+from nxxt_level.sync.hub import StateHub
+from nxxt_level.sync.serialization import serialize_strip
 
 logging.basicConfig(
     level=logging.INFO,
@@ -143,8 +146,16 @@ def cmd_provision(args: argparse.Namespace) -> int:
 
 async def _run_server(args: argparse.Namespace) -> int:
     """Run async device server with live terminal monitoring."""
+    hub = StateHub()
+    pending_updates = set()
+
     def on_state_updated(state: PowerStripState) -> None:
         print("\n" + state.format_terminal_summary())
+        # Snapshot immediately: the mutable state may change before the task runs.
+        snapshot = serialize_strip(state)
+        task = asyncio.create_task(hub.publish("devices", state.mac, snapshot))
+        pending_updates.add(task)
+        task.add_done_callback(pending_updates.discard)
 
     server = StripDeviceServer(
         bind_host=args.host,
@@ -164,14 +175,30 @@ async def _run_server(args: argparse.Namespace) -> int:
     print(" Press Ctrl+C to terminate.")
     print("-" * 66)
 
-    await server.start()
+    sync_server = None
+    if args.sync:
+        token = os.environ.get(args.sync_token_env, "")
+        if len(token) < 32:
+            raise ValueError(
+                f"Set {args.sync_token_env} to a random token of at least 32 characters"
+            )
+        from nxxt_level.sync.websocket_server import serve_sync
+        sync_server = await serve_sync(hub, token, args.sync_host, args.sync_port)
+        logger.info("Authenticated sync stream on %s:%s", args.sync_host, args.sync_port)
+
     try:
+        await server.start()
         while True:
             await asyncio.sleep(3600)
     except asyncio.CancelledError:
         pass
     finally:
         await server.stop()
+        if pending_updates:
+            await asyncio.gather(*pending_updates, return_exceptions=True)
+        if sync_server is not None:
+            sync_server.close()
+            await sync_server.wait_closed()
     return 0
 
 
@@ -217,6 +244,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=5.0,
         help="Interval in seconds between telemetry polling queries (default: 5.0)",
     )
+
+    serve_parser.add_argument("--sync", action="store_true",
+                              help="Enable authenticated, read-only live synchronization")
+    serve_parser.add_argument("--sync-host", default="127.0.0.1",
+                              help="Sync interface (explicitly set LAN IP for remote clients)")
+    serve_parser.add_argument("--sync-port", type=int, default=10087)
+    serve_parser.add_argument("--sync-token-env", default="NXXT_SYNC_TOKEN",
+                              help="Environment variable containing the pairing token")
 
     # Command: provision
     prov_parser = subparsers.add_parser(
