@@ -46,6 +46,24 @@ class CredentialStore:
         db.execute("PRAGMA foreign_keys = ON")
         return db
 
+    def redeem_bootstrap(self, member_id: str) -> str:
+        """Issue the first credential only when the credential store is empty."""
+        if not member_id:
+            raise ValueError("Member ID is required")
+        token = secrets.token_urlsafe(48)
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            count = db.execute(
+                "SELECT COUNT(*) FROM member_credentials WHERE revoked_at IS NULL"
+            ).fetchone()[0]
+            if count:
+                raise ValueError("Bootstrap is already complete")
+            db.execute(
+                "INSERT INTO member_credentials(member_id, token_hash, created_at) VALUES (?, ?, ?)",
+                (member_id, _digest(token), int(time.time())),
+            )
+        return token
+
     def create_invite(self, created_by: str, ttl_seconds: int = 300) -> str:
         if not created_by or not 30 <= ttl_seconds <= 900:
             raise ValueError("Invite creator is required and TTL must be 30–900 seconds")
