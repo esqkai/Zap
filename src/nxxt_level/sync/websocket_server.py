@@ -6,6 +6,7 @@ import json
 from typing import Any, Optional
 
 from nxxt_level.pairing import CredentialStore
+from nxxt_level.group import Member
 from nxxt_level.sync.hub import StateHub
 
 
