@@ -1,6 +1,8 @@
 import asyncio
-
-import pytest
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from nxxt_level.group import Member, Strip
 from nxxt_level.group_service import PersistentGroupService
@@ -8,45 +10,46 @@ from nxxt_level.group_store import GroupStore
 from nxxt_level.sync.hub import StateHub
 
 
-@pytest.mark.asyncio
-async def test_group_mutations_are_persisted_before_live_broadcast(tmp_path):
-    store = GroupStore(str(tmp_path / "groups.sqlite3"))
-    hub = StateHub()
-    service = await PersistentGroupService.open("home", store, hub)
-    subscriber = await hub.subscribe()
-    initial = await subscriber.queue.get()
-    assert initial["state"]["groups"]["home"]["strips"] == {}
+class TestPersistentGroupService(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.store = GroupStore(str(Path(self.temp.name) / "groups.sqlite3"))
+        self.hub = StateHub()
+        self.service = await PersistentGroupService.open("home", self.store, self.hub)
 
-    await service.add_member(Member("laptop", "Arch Laptop", "linux"))
-    await service.add_strip(Strip("strip-1", "Office Strip"))
-    await service.rename_outlet("strip-1", 2, "Laptop Charger")
+    async def asyncTearDown(self):
+        self.temp.cleanup()
 
-    # Every mutation publishes a complete group snapshot.
-    events = [await subscriber.queue.get() for _ in range(3)]
-    assert all(event["section"] == "groups" for event in events)
-    assert events[-1]["value"]["strips"]["strip-1"]["outlet_names"][2] == "Laptop Charger"
+    async def test_group_mutations_persist_before_live_broadcast(self):
+        subscriber = await self.hub.subscribe()
+        initial = await subscriber.queue.get()
+        self.assertEqual(initial["state"]["groups"]["home"]["strips"], {})
 
-    # A fresh service instance sees the committed state after restart.
-    restored = await PersistentGroupService.open("home", store, StateHub())
-    assert restored.group.strips["strip-1"].outlet_names[2] == "Laptop Charger"
-    assert "laptop" in restored.group.members
+        await self.service.add_member(Member("laptop", "Arch Laptop", "linux"))
+        await self.service.add_strip(Strip("strip-1", "Office Strip"))
+        await self.service.rename_outlet("strip-1", 2, "Laptop Charger")
 
+        events = [await subscriber.queue.get() for _ in range(3)]
+        self.assertTrue(all(event["section"] == "groups" for event in events))
+        self.assertEqual(
+            events[-1]["value"]["strips"]["strip-1"]["outlet_names"][2],
+            "Laptop Charger",
+        )
 
-@pytest.mark.asyncio
-async def test_group_changes_are_not_broadcast_if_database_save_fails(tmp_path, monkeypatch):
-    store = GroupStore(str(tmp_path / "groups.sqlite3"))
-    hub = StateHub()
-    service = await PersistentGroupService.open("home", store, hub)
-    subscriber = await hub.subscribe()
-    await subscriber.queue.get()  # initial snapshot
+        restored = await PersistentGroupService.open("home", self.store, StateHub())
+        self.assertEqual(
+            restored.group.strips["strip-1"].outlet_names[2], "Laptop Charger"
+        )
+        self.assertIn("laptop", restored.group.members)
 
-    def fail_save(group):
-        raise OSError("disk unavailable")
+    async def test_failed_database_write_rolls_back_and_is_not_broadcast(self):
+        subscriber = await self.hub.subscribe()
+        await subscriber.queue.get()
 
-    monkeypatch.setattr(store, "save", fail_save)
-    with pytest.raises(OSError):
-        await service.add_member(Member("laptop", "Arch Laptop", "linux"))
+        with patch.object(self.store, "save", side_effect=OSError("disk unavailable")):
+            with self.assertRaises(OSError):
+                await self.service.add_member(Member("laptop", "Arch Laptop", "linux"))
 
-    assert "laptop" not in service.group.members
-    with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(subscriber.queue.get(), timeout=0.01)
+        self.assertNotIn("laptop", self.service.group.members)
+        with self.assertRaises(asyncio.TimeoutError):
+            await asyncio.wait_for(subscriber.queue.get(), timeout=0.01)
