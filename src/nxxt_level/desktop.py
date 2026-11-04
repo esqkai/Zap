@@ -255,6 +255,7 @@ class MainWindow(QMainWindow):
             return
         self.member_id = self.member_field.text().strip()
         self.token = self.token_field.text()
+        self.settings.setValue("member_id", self.member_id)
         if not self.member_id or len(self.token) < 32:
             self.connection.setText("Enter your member ID and pairing token")
             return
