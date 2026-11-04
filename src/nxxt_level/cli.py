@@ -28,6 +28,7 @@ from nxxt_level.sync.hub import StateHub
 from nxxt_level.sync.serialization import serialize_strip
 from nxxt_level.group_store import GroupStore
 from nxxt_level.group_service import PersistentGroupService
+from nxxt_level.pairing import CredentialStore
 
 logging.basicConfig(
     level=logging.INFO,
@@ -151,6 +152,7 @@ async def _run_server(args: argparse.Namespace) -> int:
     hub = StateHub()
     state_db = args.state_db or _default_state_database()
     group_store = GroupStore(state_db)
+    credential_store = CredentialStore(state_db)
     group_service = await PersistentGroupService.open(args.group_id, group_store, hub)
     logger.info("Loaded Nxxt group '%s' from %s", args.group_id, state_db)
     pending_updates = set()
@@ -189,7 +191,7 @@ async def _run_server(args: argparse.Namespace) -> int:
                 f"Set {args.sync_token_env} to a random token of at least 32 characters"
             )
         from nxxt_level.sync.websocket_server import serve_sync
-        sync_server = await serve_sync(hub, token, args.sync_host, args.sync_port)
+        sync_server = await serve_sync(hub, credential_store, args.sync_host, args.sync_port)
         logger.info("Authenticated sync stream on %s:%s", args.sync_host, args.sync_port)
 
     try:
