@@ -1,6 +1,6 @@
 """Per-member pairing credentials and one-time invitation codes.
 
-Only salted hashes are persisted. Raw pairing codes and member tokens are returned
+Only one-way hashes of high-entropy secrets are persisted. Raw pairing codes and member tokens are returned
 once to the caller and must be delivered over a trusted local pairing flow.
 """
 from __future__ import annotations
