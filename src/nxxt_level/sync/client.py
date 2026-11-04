@@ -1,4 +1,4 @@
-"""Read-only real-time client used by Windows and Linux frontends."""
+"""Read-only real-time client using per-installation member credentials."""
 from __future__ import annotations
 
 import asyncio
@@ -6,23 +6,21 @@ import json
 from typing import Any, AsyncIterator, Dict
 
 
-async def watch_controller(uri: str, token: str) -> AsyncIterator[Dict[str, Any]]:
-    """Yield initial snapshot then ordered state events.
-
-    Reconnect with exponential backoff; request a fresh snapshot on every
-    connection. Callers should treat data as stale while disconnected.
-    """
+async def watch_controller(uri: str, member_id: str, token: str) -> AsyncIterator[Dict[str, Any]]:
+    """Yield snapshots and ordered updates, reconnecting with backoff."""
     from websockets.asyncio.client import connect
 
     if not uri.startswith(("ws://", "wss://")):
         raise ValueError("Expected a WebSocket URL")
-    if len(token) < 32:
-        raise ValueError("Pairing token must contain at least 32 characters")
+    if not member_id or len(token) < 32:
+        raise ValueError("A member ID and valid pairing token are required")
     delay = 1.0
     while True:
         try:
             async with connect(uri, open_timeout=5, max_size=1024 * 1024) as ws:
-                await ws.send(json.dumps({"type": "auth", "token": token}))
+                await ws.send(json.dumps({
+                    "type": "auth", "member_id": member_id, "token": token,
+                }))
                 delay = 1.0
                 last_revision = -1
                 async for raw in ws:
@@ -39,7 +37,7 @@ async def watch_controller(uri: str, token: str) -> AsyncIterator[Dict[str, Any]
                         last_revision = revision
                     elif kind == "state_changed":
                         if revision != last_revision + 1:
-                            break  # Lost events; reconnect for full snapshot.
+                            break
                         last_revision = revision
                     else:
                         continue
