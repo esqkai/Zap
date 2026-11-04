@@ -1,39 +1,33 @@
-"""LAN WebSocket transport for StateHub.
-
-Install optional dependency: pip install websockets>=12.
-Use a randomly generated pairing token; never expose this port to the internet.
-"""
+"""Member-authenticated LAN WebSocket transport for StateHub."""
 from __future__ import annotations
 
 import asyncio
-import hmac
 import json
 from typing import Any
 
+from nxxt_level.pairing import CredentialStore
 from nxxt_level.sync.hub import StateHub
 
 
-async def serve_sync(hub: StateHub, token: str, host: str = "127.0.0.1",
-                     port: int = 10087) -> Any:
-    """Start a WebSocket event server. Returns a closable server object.
-
-    This is a read-only stream; command handling will be added only after
-    device acknowledgements and authorization are integrated.
-    """
-    if len(token) < 32:
-        raise ValueError("Pairing token must contain at least 32 characters")
+async def serve_sync(hub: StateHub, credentials: CredentialStore,
+                     host: str = "127.0.0.1", port: int = 10087) -> Any:
+    """Start a read-only event stream authenticated per paired member."""
     from websockets.asyncio.server import serve
 
     async def handle(ws: Any) -> None:
+        member_id = None
         try:
             raw = await asyncio.wait_for(ws.recv(), timeout=5)
             auth = json.loads(raw)
-            if (not isinstance(auth, dict)
-                    or auth.get("type") != "auth"
-                    or not isinstance(auth.get("token"), str)
-                    or not hmac.compare_digest(auth["token"], token)):
+            if not isinstance(auth, dict) or auth.get("type") != "auth":
+                raise ValueError("Invalid authentication message")
+            candidate_id, token = auth.get("member_id"), auth.get("token")
+            if not isinstance(candidate_id, str) or not isinstance(token, str):
+                raise ValueError("Member identity and token are required")
+            if not await asyncio.to_thread(credentials.authenticate, candidate_id, token):
                 await ws.close(code=1008, reason="Unauthorized")
                 return
+            member_id = candidate_id
         except (asyncio.TimeoutError, ValueError, TypeError):
             await ws.close(code=1008, reason="Invalid authentication")
             return
@@ -49,4 +43,4 @@ async def serve_sync(hub: StateHub, token: str, host: str = "127.0.0.1",
         finally:
             await hub.unsubscribe(subscriber)
 
-    return await serve(handle, host, port, max_size=16384)
+    return await serve(handle, host, port, max_size=1024 * 1024)
