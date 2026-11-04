@@ -216,16 +216,28 @@ class MainWindow(QMainWindow):
         self.rename_outlet_button.clicked.connect(self.rename_outlet)
         self.invite_button = QPushButton("Add another computer")
         self.invite_button.clicked.connect(self.create_invitation)
+        self.register_strip_button = QPushButton("Register strip")
+        self.register_strip_button.clicked.connect(self.register_strip)
         self.pair_button = QPushButton("Pair this computer")
         self.pair_button.clicked.connect(self.pair_this_computer)
         self.rename_strip_button.setEnabled(False)
         self.rename_outlet_button.setEnabled(False)
         self.invite_button.setEnabled(False)
+        self.register_strip_button.setEnabled(False)
+        self.bind_device_button.setEnabled(False)
         row.addWidget(self.rename_strip_button)
         row.addWidget(self.rename_outlet_button)
         row.addWidget(self.invite_button)
+        row.addWidget(self.register_strip_button)
         layout.addLayout(row)
         layout.addWidget(self.pair_button)
+        device_row = QHBoxLayout()
+        self.device_picker = QComboBox()
+        self.bind_device_button = QPushButton("Bind selected hardware to strip")
+        self.bind_device_button.clicked.connect(self.bind_selected_device)
+        device_row.addWidget(self.device_picker, 1)
+        device_row.addWidget(self.bind_device_button)
+        layout.addLayout(device_row)
         layout.addWidget(QLabel("Assign a computer to its charger outlet"))
         self.member_picker = QComboBox()
         self.assignment_picker = QComboBox()
@@ -376,6 +388,15 @@ class MainWindow(QMainWindow):
         self.rename_strip_button.setEnabled(mine_is_sudo and bool(strip_id))
         self.rename_outlet_button.setEnabled(mine_is_sudo and bool(strip_id))
         self.invite_button.setEnabled(mine_is_sudo and not self.pending_command)
+        self.register_strip_button.setEnabled(mine_is_sudo and not self.pending_command)
+        self.bind_device_button.setEnabled(mine_is_sudo and bool(strip_id) and bool(self.devices) and not self.pending_command)
+        old_mac = self.device_picker.currentData()
+        self.device_picker.clear()
+        for mac, device in self.devices.items():
+            self.device_picker.addItem(f"{device.get('model', 'Strip')} · {mac}", mac)
+        device_index = self.device_picker.findData(old_mac)
+        if device_index >= 0:
+            self.device_picker.setCurrentIndex(device_index)
         self.assign_button.setEnabled(mine_is_sudo and bool(members) and bool(self.groups) and not self.pending_command)
         self.unassign_button.setEnabled(mine_is_sudo and bool(members) and not self.pending_command)
         self.push_button.setEnabled(mine_is_sudo and not self.pending_command)
@@ -395,6 +416,27 @@ class MainWindow(QMainWindow):
                 self.assignment_picker.addItem(
                     f"{item.get('display_name', sid)} · {outlet_name}", (sid, ch)
                 )
+
+    def register_strip(self) -> None:
+        strip_id, ok = QInputDialog.getText(self, "Register strip", "Unique strip ID:")
+        if not ok or not strip_id.strip():
+            return
+        name, ok = QInputDialog.getText(self, "Register strip", "Display name:")
+        if ok and name.strip():
+            self.send_command({
+                "command": "register_strip", "strip_id": strip_id.strip(),
+                "name": name.strip(),
+            })
+
+    def bind_selected_device(self) -> None:
+        strip_id, _ = self.selected_strip()
+        mac = self.device_picker.currentData()
+        if not strip_id or not mac:
+            return
+        self.send_command({
+            "command": "bind_strip_device", "strip_id": strip_id,
+            "device_mac": mac,
+        })
 
     def assign_charger(self) -> None:
         member_id = self.member_picker.currentData()
