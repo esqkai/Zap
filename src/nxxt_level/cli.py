@@ -226,6 +226,29 @@ def _default_state_database() -> str:
     return os.path.join(directory, "groups.sqlite3")
 
 
+def cmd_bootstrap(args: argparse.Namespace) -> int:
+    """Create the first local group member and issue its one-time token."""
+    async def run() -> str:
+        state_db = args.state_db or _default_state_database()
+        hub = StateHub()
+        groups = await PersistentGroupService.open(args.group_id, GroupStore(state_db), hub)
+        credentials = CredentialStore(state_db)
+        member = Member(args.member_id, args.name, args.platform,
+                        capabilities=set(args.capability or []))
+        return await groups.bootstrap_first_member(member, credentials)
+
+    try:
+        token = asyncio.run(run())
+    except Exception as exc:
+        print(f"Bootstrap failed: {exc}", file=sys.stderr)
+        return 1
+    print("Initial member created. Save this token now; it will not be shown again.")
+    print(f"Member ID: {args.member_id}")
+    print(f"Member token: {token}")
+    print("Connect this computer, then claim Sudo from the desktop app.")
+    return 0
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     """Entry point for `zap serve`."""
     try:
