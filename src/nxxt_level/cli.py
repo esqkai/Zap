@@ -194,7 +194,8 @@ async def _run_server(args: argparse.Namespace) -> int:
         from nxxt_level.sync.websocket_server import serve_sync
         command_handler = GroupCommandHandler(group_service, server)
         sync_server = await serve_sync(
-            hub, credential_store, args.sync_host, args.sync_port, command_handler
+            hub, credential_store, args.sync_host, args.sync_port,
+            command_handler, group_service
         )
         logger.info("Authenticated sync stream on %s:%s", args.sync_host, args.sync_port)
 
