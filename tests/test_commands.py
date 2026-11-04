@@ -154,6 +154,12 @@ class TestGroupCommandHandler(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(CommandError):
             await self.handler.handle("laptop", {"command": "create_pairing_invite"})
 
+
+    async def test_online_endpoint_can_manually_claim_when_previous_sudo_is_offline(self):
+        await self.groups.set_member_online("pc", False)
+        await self.handler.handle("laptop", {"command": "claim_sudo"})
+        self.assertEqual(self.groups.group.sudo_member_id, "laptop")
+
     async def test_sudo_role_is_exclusive_and_manual(self):
         await self.handler.handle("pc", {"command": "release_sudo"})
         # Once Sudo is vacant, any online Endpoint may explicitly claim it.
