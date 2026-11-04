@@ -37,7 +37,7 @@ def test_round_trip_persists_group_names_capabilities_assignments_and_settings(t
     assert loaded.members["laptop-1"].charger_assignments == {"strip-1": 2}
     assert loaded.strips["strip-1"].display_name == "Office Strip"
     assert loaded.strips["strip-1"].outlet_names[2] == "Laptop Charger"
-    assert loaded.sudo_member_id == "desktop-1"
+    assert loaded.sudo_member_id is None  # active role must be explicitly reclaimed
     assert loaded.push_notifications_enabled is False
 
 
@@ -48,6 +48,7 @@ def test_presence_is_not_restored_after_restart(tmp_path):
     loaded = store.load("home")
     assert loaded is not None
     assert all(not member.online for member in loaded.members.values())
+    assert loaded.sudo_member_id is None
 
 
 def test_unknown_group_returns_none(tmp_path):
