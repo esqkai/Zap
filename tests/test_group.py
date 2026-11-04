@@ -78,3 +78,47 @@ def test_battery_capability_is_optional():
     group = make_group()
     assert "battery_monitoring" not in group.members["pc"].capabilities
     assert "battery_monitoring" in group.members["laptop"].capabilities
+
+
+def test_laptop_charger_pairing_and_exclusive_outlet_assignment():
+    group = make_group()
+    group.assign_charger("laptop", "strip-mac", 2)
+    assert group.members["laptop"].charger_assignments["strip-mac"] == 2
+    with pytest.raises(GroupError):
+        group.assign_charger("pc", "strip-mac", 2)
+
+
+def test_battery_events_use_assigned_names_and_route_only_to_sudo():
+    group = make_group()
+    group.rename_strip("strip-mac", "Office Strip")
+    group.rename_outlet("strip-mac", 2, "Laptop Charger")
+    group.assign_charger("laptop", "strip-mac", 2)
+    assert group.notification_recipients() == []
+    group.claim_sudo("pc")
+    event = group.build_battery_event("laptop", "strip-mac", 24, "charger_on")
+    assert event["outlet_name"] == "Laptop Charger"
+    assert event["strip_name"] == "Office Strip"
+    assert event["recipients"] == ["pc"]
+    assert "Arch Laptop battery is at 24%" in event["message"]
+    assert "switched on Laptop Charger" in event["message"]
+
+
+def test_battery_automation_requires_capability_and_assignment():
+    group = make_group()
+    with pytest.raises(GroupError):
+        group.build_battery_event("pc", "strip-mac", 50, "charger_on")
+    with pytest.raises(GroupError):
+        group.build_battery_event("laptop", "strip-mac", 50, "charger_on")
+    group.assign_charger("laptop", "strip-mac", 1)
+    with pytest.raises(GroupError):
+        group.build_battery_event("laptop", "strip-mac", 101, "charger_on")
+
+
+def test_notifications_only_go_to_current_sudo_and_can_be_disabled():
+    group = make_group()
+    group.claim_sudo("pc")
+    assert group.notification_recipients() == ["pc"]
+    group.set_push_notifications(False, "pc")
+    assert group.notification_recipients() == []
+    with pytest.raises(GroupError):
+        group.set_push_notifications(True, "laptop")
