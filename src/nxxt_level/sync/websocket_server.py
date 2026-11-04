@@ -11,7 +11,8 @@ from nxxt_level.sync.hub import StateHub
 
 async def serve_sync(hub: StateHub, credentials: CredentialStore,
                      host: str = "127.0.0.1", port: int = 10087,
-                     command_handler: Optional[Any] = None) -> Any:
+                     command_handler: Optional[Any] = None,
+                     group_service: Optional[Any] = None) -> Any:
     """Serve snapshots and optional authorized commands over WebSocket."""
     from websockets.asyncio.server import serve
 
@@ -27,6 +28,11 @@ async def serve_sync(hub: StateHub, credentials: CredentialStore,
             if not await asyncio.to_thread(credentials.authenticate, member_id, token):
                 await ws.close(code=1008, reason="Unauthorized")
                 return
+            if group_service is not None:
+                if member_id not in group_service.group.members:
+                    await ws.close(code=1008, reason="Unknown group member")
+                    return
+                await group_service.set_member_online(member_id, True)
         except (asyncio.TimeoutError, ValueError, TypeError):
             await ws.close(code=1008, reason="Invalid authentication")
             return
@@ -82,5 +88,10 @@ async def serve_sync(hub: StateHub, credentials: CredentialStore,
             receiver.cancel()
             await asyncio.gather(sender, receiver, return_exceptions=True)
             await hub.unsubscribe(subscriber)
+            if group_service is not None and member_id in group_service.group.members:
+                try:
+                    await group_service.set_member_online(member_id, False)
+                except Exception:
+                    pass
 
     return await serve(handle, host, port, max_size=16384)
