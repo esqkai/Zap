@@ -153,8 +153,16 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(self.control_page)
         form = QFormLayout()
         self.endpoint = QLineEdit(os.environ.get("NXXT_SYNC_URL", "ws://127.0.0.1:10087"))
-        self.member_field = QLineEdit(os.environ.get("NXXT_MEMBER_ID", ""))
-        self.token_field = QLineEdit(os.environ.get("NXXT_MEMBER_TOKEN", ""))
+        saved_member = os.environ.get("NXXT_MEMBER_ID") or self.settings.value("member_id", "")
+        saved_token = os.environ.get("NXXT_MEMBER_TOKEN", "")
+        if not saved_token and saved_member:
+            try:
+                import keyring
+                saved_token = keyring.get_password("NxxtLevel", saved_member) or ""
+            except Exception:
+                saved_token = ""
+        self.member_field = QLineEdit(saved_member)
+        self.token_field = QLineEdit(saved_token)
         self.token_field.setEchoMode(QLineEdit.EchoMode.Password)
         form.addRow("Controller URL", self.endpoint)
         form.addRow("This computer's member ID", self.member_field)
