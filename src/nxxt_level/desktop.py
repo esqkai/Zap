@@ -404,6 +404,10 @@ class MainWindow(QMainWindow):
             self.device_picker.setCurrentIndex(device_index)
         self.assign_button.setEnabled(mine_is_sudo and bool(members) and bool(self.groups) and not self.pending_command)
         self.unassign_button.setEnabled(mine_is_sudo and bool(members) and not self.pending_command)
+        push_enabled = bool(group.get("push_notifications_enabled", True))
+        self.push_button.setText(
+            "Sudo notifications: ON" if push_enabled else "Sudo notifications: OFF"
+        )
         self.push_button.setEnabled(mine_is_sudo and not self.pending_command)
         self.member_picker.blockSignals(True)
         old_member = self.member_picker.currentData()
