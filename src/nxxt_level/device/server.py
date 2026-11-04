@@ -91,7 +91,8 @@ class StripSession:
             await self.send_raw(build_getinfo_all())
             try:
                 await asyncio.wait_for(self._telemetry_received_event.wait(), timeout=4.0)
-                return True
+                # A telemetry response is not enough: verify the requested relay state.
+                return bool(self.state and self.state.outlets[channel].is_on == on)
             except asyncio.TimeoutError:
                 return False
 
