@@ -76,8 +76,16 @@ async def serve_sync(hub: StateHub, credentials: CredentialStore,
                     presence_counts[member_id] = count + 1
                     if count == 0:
                         await group_service.set_member_online(member_id, True)
-        except (asyncio.TimeoutError, ValueError, TypeError):
-            await ws.close(code=1008, reason="Invalid authentication")
+        except (asyncio.TimeoutError, ValueError, TypeError) as exc:
+            if isinstance(locals().get("auth"), dict) and auth.get("type") == "pair":
+                try:
+                    await ws.send(json.dumps({
+                        "type": "pairing_result", "ok": False,
+                        "error": str(exc)[:200],
+                    }))
+                except Exception:
+                    pass
+            await ws.close(code=1008, reason="Invalid authentication or pairing")
             return
 
         subscriber = await hub.subscribe()
