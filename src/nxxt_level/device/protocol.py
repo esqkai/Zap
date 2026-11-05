@@ -98,14 +98,14 @@ class ProtocolError(Exception):
     """Raised when protocol validation fails."""
 
 
-def clean_raw_line(raw: Union[bytes, str]) -> str:
+def clean_raw_line(raw: Union[bytes, bytearray, memoryview, str]) -> str:
     """Clean raw wire bytes or string.
 
     Strips null bytes (a known hardware quirk of the MTTL-W01), carriage returns,
     newlines, and surrounding whitespace.
     """
-    if isinstance(raw, bytes):
-        raw = raw.replace(b"\x00", b"").decode("utf-8", errors="replace")
+    if isinstance(raw, (bytes, bytearray, memoryview)):
+        raw = bytes(raw).replace(b"\x00", b"").decode("utf-8", errors="replace")
     elif isinstance(raw, str):
         raw = raw.replace("\x00", "")
     return raw.strip("\r\n ")
