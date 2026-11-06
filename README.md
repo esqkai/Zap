@@ -147,7 +147,7 @@ All tests execute completely offline without requiring physical hardware:
 python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-All 27 unit and integration tests verify:
+The offline unit and integration suite verifies:
 - Message framing and null-byte cleanup
 - Command generation and syntax constraints
 - Robust protocol parsing and error resilience
@@ -160,3 +160,63 @@ All 27 unit and integration tests verify:
 
 For low-level wire formats, channel definitions, timing requirements, and hardware quirks, see:
 - [docs/protocol.md](docs/protocol.md)
+
+
+## Multi-computer group setup (development preview)
+
+The group and pairing workflow is available on the `feature/realtime-sync-foundation` branch. It is still a development preview, not a production-ready network service.
+
+### 1. Bootstrap the first computer
+
+Install the desktop and sync extras:
+
+```bash
+pip install -e ".[desktop,sync]"
+```
+
+Create the first member locally (run this only once for a new group):
+
+```bash
+zap bootstrap --member-id main-pc --name "Main PC" --platform windows
+```
+
+Choose `linux` or `macos` as appropriate. The command prints a one-time member token. Store it securely; the desktop app can use the operating-system credential vault after subsequent pairing.
+
+### 2. Start the controller
+
+On the computer that will host the strip connection:
+
+```bash
+zap serve --port 10086 --sync --sync-host 0.0.0.0
+```
+
+Use the controller computer's LAN IPv4 address in the desktop app, for example `ws://192.168.1.20:10087`. Keep this service on a trusted LAN only. The current WebSocket transport uses `ws://`, not TLS; do not port-forward it or expose it to the public internet.
+
+### 3. Connect and claim Sudo
+
+Launch `nxxt-level`, enter the member ID and one-time token, and connect. Claim Sudo from the realtime-control page. Only the current Sudo can register strips, issue invitations, rename strips/outlets, bind physical strip hardware, assign chargers, and change the Sudo notification preference.
+
+### 4. Add another computer
+
+From the Sudo computer's Devices & assignments page, choose **Add another computer**. Share the generated five-minute, single-use invitation code with the new computer over a trusted channel. On the new computer, launch `nxxt-level`, enter the same controller URL, choose **Pair this computer**, and enter the invitation code plus that computer's unique ID, display name and platform. Battery monitoring is an optional per-computer capability.
+
+The new computer receives its own member token. The desktop app attempts to store it in the operating-system credential vault (Windows Credential Manager or the Linux Secret Service/keyring backend). If no vault is available, save the token securely before closing the app.
+
+### 5. Register and bind the physical strip
+
+After the strip has connected to the controller and its MAC appears in telemetry:
+1. On the Sudo computer, choose **Register strip** and give it a unique ID and display name.
+2. Select that logical strip in the realtime-control page.
+3. In Devices & assignments, select the discovered physical MAC and choose **Bind selected hardware to strip**.
+4. Rename the four outlets and assign a laptop to the outlet used by its charger.
+
+An Endpoint can control only its explicitly assigned outlet(s). Sudo can control every registered outlet. Relay switching reports success only when refreshed strip telemetry confirms the requested state.
+
+### Current boundaries
+
+- The pairing, group, presence and command layers are still under active development.
+- The desktop setup UI currently provides pairing, strip registration/binding, naming, charger assignment and notification-preference controls; it is not yet a full polished onboarding experience.
+- The notification preference is stored, but OS push-notification delivery is not implemented.
+- Battery monitoring is opt-in metadata only; OS battery collectors and automatic charge-threshold actions are not yet connected.
+- The MTTL-W01 relay command path still needs validation against the actual physical strip before relying on it.
+- The first-run bootstrap token is printed once by the CLI. Keep it private.

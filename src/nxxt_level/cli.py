@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import getpass
 import logging
+import os
 import socket
 import sys
 from typing import List, Optional
@@ -23,6 +24,13 @@ from nxxt_level.device.provisioning import (
 )
 from nxxt_level.device.server import StripDeviceServer
 from nxxt_level.device.state import PowerStripState
+from nxxt_level.sync.hub import StateHub
+from nxxt_level.sync.serialization import serialize_strip
+from nxxt_level.group_store import GroupStore
+from nxxt_level.group_service import PersistentGroupService
+from nxxt_level.group import Member
+from nxxt_level.pairing import CredentialStore
+from nxxt_level.sync.commands import GroupCommandHandler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -143,8 +151,21 @@ def cmd_provision(args: argparse.Namespace) -> int:
 
 async def _run_server(args: argparse.Namespace) -> int:
     """Run async device server with live terminal monitoring."""
+    hub = StateHub()
+    state_db = args.state_db or _default_state_database()
+    group_store = GroupStore(state_db)
+    credential_store = CredentialStore(state_db)
+    group_service = await PersistentGroupService.open(args.group_id, group_store, hub)
+    logger.info("Loaded Nxxt group '%s' from %s", args.group_id, state_db)
+    pending_updates = set()
+
     def on_state_updated(state: PowerStripState) -> None:
         print("\n" + state.format_terminal_summary())
+        # Snapshot immediately: the mutable state may change before the task runs.
+        snapshot = serialize_strip(state)
+        task = asyncio.create_task(hub.publish("devices", state.mac, snapshot))
+        pending_updates.add(task)
+        task.add_done_callback(pending_updates.discard)
 
     server = StripDeviceServer(
         bind_host=args.host,
@@ -164,14 +185,67 @@ async def _run_server(args: argparse.Namespace) -> int:
     print(" Press Ctrl+C to terminate.")
     print("-" * 66)
 
-    await server.start()
+    sync_server = None
+    if args.sync:
+        from nxxt_level.sync.websocket_server import serve_sync
+        command_handler = GroupCommandHandler(group_service, server, credential_store)
+        sync_server = await serve_sync(
+            hub, credential_store, args.sync_host, args.sync_port,
+            command_handler, group_service
+        )
+        logger.info("Authenticated sync and command server on %s:%s", args.sync_host, args.sync_port)
+
     try:
+        await server.start()
         while True:
             await asyncio.sleep(3600)
     except asyncio.CancelledError:
         pass
     finally:
         await server.stop()
+        if pending_updates:
+            await asyncio.gather(*pending_updates, return_exceptions=True)
+        if sync_server is not None:
+            sync_server.close()
+            await sync_server.wait_closed()
+    return 0
+
+
+
+def _default_state_database() -> str:
+    """Return a per-user writable state database path on Windows/Linux."""
+    if os.name == "nt":
+        root = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        directory = os.path.join(root, "NxxtLevel")
+    else:
+        root = os.environ.get("XDG_STATE_HOME") or os.path.join(
+            os.path.expanduser("~"), ".local", "state"
+        )
+        directory = os.path.join(root, "nxxt-level")
+    os.makedirs(directory, exist_ok=True)
+    return os.path.join(directory, "groups.sqlite3")
+
+
+def cmd_bootstrap(args: argparse.Namespace) -> int:
+    """Create the first local group member and issue its one-time token."""
+    async def run() -> str:
+        state_db = args.state_db or _default_state_database()
+        hub = StateHub()
+        groups = await PersistentGroupService.open(args.group_id, GroupStore(state_db), hub)
+        credentials = CredentialStore(state_db)
+        member = Member(args.member_id, args.name, args.platform,
+                        capabilities=set(args.capability or []))
+        return await groups.bootstrap_first_member(member, credentials)
+
+    try:
+        token = asyncio.run(run())
+    except Exception as exc:
+        print(f"Bootstrap failed: {exc}", file=sys.stderr)
+        return 1
+    print("Initial member created. Save this token now; it will not be shown again.")
+    print(f"Member ID: {args.member_id}")
+    print(f"Member token: {token}")
+    print("Connect this computer, then claim Sudo from the desktop app.")
     return 0
 
 
@@ -217,6 +291,23 @@ def build_parser() -> argparse.ArgumentParser:
         default=5.0,
         help="Interval in seconds between telemetry polling queries (default: 5.0)",
     )
+
+    serve_parser.add_argument("--group-id", default="home", help="Persistent Nxxt group identifier (default: home)")
+    serve_parser.add_argument("--state-db", help="SQLite state database path (default: OS user data directory)")
+    serve_parser.add_argument("--sync", action="store_true",
+                              help="Enable authenticated live synchronization and allow-listed commands")
+    serve_parser.add_argument("--sync-host", default="127.0.0.1",
+                              help="Sync interface (explicitly set LAN IP for remote clients)")
+    serve_parser.add_argument("--sync-port", type=int, default=10087)
+
+    # Command: one-time first-run bootstrap
+    bootstrap_parser = subparsers.add_parser("bootstrap", help="Create the first local group member")
+    bootstrap_parser.add_argument("--member-id", required=True)
+    bootstrap_parser.add_argument("--name", required=True)
+    bootstrap_parser.add_argument("--platform", choices=("windows", "linux", "macos"), required=True)
+    bootstrap_parser.add_argument("--capability", action="append", default=[])
+    bootstrap_parser.add_argument("--group-id", default="home")
+    bootstrap_parser.add_argument("--state-db")
 
     # Command: provision
     prov_parser = subparsers.add_parser(
@@ -268,6 +359,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.command == "serve":
         return cmd_serve(args)
+    elif args.command == "bootstrap":
+        return cmd_bootstrap(args)
     elif args.command == "provision":
         return cmd_provision(args)
     else:

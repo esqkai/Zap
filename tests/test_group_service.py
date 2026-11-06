@@ -1,0 +1,116 @@
+import asyncio
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from nxxt_level.group import Member, Strip
+from nxxt_level.group_service import PersistentGroupService
+from nxxt_level.group_store import GroupStore
+from nxxt_level.pairing import CredentialStore
+from nxxt_level.sync.hub import StateHub
+
+
+class TestPersistentGroupService(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.db_path = str(Path(self.temp.name) / "groups.sqlite3")
+        self.store = GroupStore(self.db_path)
+        self.credentials = CredentialStore(self.db_path)
+        self.hub = StateHub()
+        self.service = await PersistentGroupService.open("home", self.store, self.hub)
+
+    async def asyncTearDown(self):
+        self.temp.cleanup()
+
+    async def test_group_mutations_persist_before_live_broadcast(self):
+        subscriber = await self.hub.subscribe()
+        initial = await subscriber.queue.get()
+        self.assertEqual(initial["state"]["groups"]["home"]["strips"], {})
+
+        await self.service.add_member(Member("laptop", "Arch Laptop", "linux"))
+        await self.service.add_strip(Strip("strip-1", "Office Strip"))
+        await self.service.rename_outlet("strip-1", 2, "Laptop Charger")
+
+        events = [await subscriber.queue.get() for _ in range(3)]
+        self.assertTrue(all(event["section"] == "groups" for event in events))
+        self.assertEqual(
+            events[-1]["value"]["strips"]["strip-1"]["outlet_names"][2],
+            "Laptop Charger",
+        )
+
+        restored = await PersistentGroupService.open("home", self.store, StateHub())
+        self.assertEqual(
+            restored.group.strips["strip-1"].outlet_names[2], "Laptop Charger"
+        )
+        self.assertIn("laptop", restored.group.members)
+
+
+    async def test_only_sudo_can_invite_and_new_member_is_persisted(self):
+        from nxxt_level.group import Member
+        await self.service.add_member(Member("sudo", "Main PC", "windows"))
+        await self.service.set_member_online("sudo", True)
+        await self.service.claim_sudo("sudo")
+        invite = await self.service.create_pairing_invite("sudo", self.credentials)
+        token = await self.service.redeem_pairing_invite(
+            invite, Member("laptop", "Arch Laptop", "linux",
+                           capabilities={"battery_monitoring"}),
+            self.credentials,
+        )
+        self.assertTrue(self.credentials.authenticate("laptop", token))
+        restored = await PersistentGroupService.open("home", self.store, StateHub())
+        self.assertIn("laptop", restored.group.members)
+        self.assertFalse(restored.group.members["laptop"].online)
+
+    async def test_endpoint_cannot_issue_pairing_invitation(self):
+        from nxxt_level.group import Member
+        await self.service.add_member(Member("endpoint", "Laptop", "linux"))
+        await self.service.set_member_online("endpoint", True)
+        with self.assertRaises(ValueError):
+            await self.service.create_pairing_invite("endpoint", self.credentials)
+
+
+    async def test_charger_assignment_grants_and_unassignment_revokes_outlet_control(self):
+        await self.service.add_member(Member("laptop", "Arch Laptop", "linux"))
+        await self.service.add_strip(Strip("strip-1", "Office Strip"))
+        await self.service.assign_charger("laptop", "strip-1", 2)
+        self.assertTrue(self.service.group.can_control_outlet("laptop", "strip-1", 2))
+        self.assertFalse(self.service.group.can_control_outlet("laptop", "strip-1", 1))
+        await self.service.unassign_charger("laptop", "strip-1")
+        self.assertFalse(self.service.group.can_control_outlet("laptop", "strip-1", 2))
+
+    async def test_charger_assignment_rejects_boolean_channel(self):
+        await self.service.add_member(Member("laptop", "Arch Laptop", "linux"))
+        await self.service.add_strip(Strip("strip-1", "Office Strip"))
+        with self.assertRaises(ValueError):
+            await self.service.assign_charger("laptop", "strip-1", True)
+
+
+    async def test_local_bootstrap_creates_first_member_once(self):
+        member = Member("first-pc", "Main PC", "windows")
+        token = await self.service.bootstrap_first_member(member, self.credentials)
+        self.assertTrue(self.credentials.authenticate("first-pc", token))
+        self.assertIn("first-pc", self.service.group.members)
+        with self.assertRaises(ValueError):
+            await self.service.bootstrap_first_member(
+                Member("second-pc", "Second PC", "windows"), self.credentials
+            )
+
+    async def test_bootstrap_token_is_not_reissued_when_credential_store_is_initialized(self):
+        self.credentials.redeem_bootstrap("orphaned-member")
+        with self.assertRaises(ValueError):
+            await self.service.bootstrap_first_member(
+                Member("first-pc", "Main PC", "windows"), self.credentials
+            )
+
+    async def test_failed_database_write_rolls_back_and_is_not_broadcast(self):
+        subscriber = await self.hub.subscribe()
+        await subscriber.queue.get()
+
+        with patch.object(self.store, "save", side_effect=OSError("disk unavailable")):
+            with self.assertRaises(OSError):
+                await self.service.add_member(Member("laptop", "Arch Laptop", "linux"))
+
+        self.assertNotIn("laptop", self.service.group.members)
+        with self.assertRaises(asyncio.TimeoutError):
+            await asyncio.wait_for(subscriber.queue.get(), timeout=0.01)
